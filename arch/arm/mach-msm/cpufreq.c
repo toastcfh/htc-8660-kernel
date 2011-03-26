@@ -276,7 +276,7 @@ static ssize_t store_mfreq(struct sysdev_class *class,
 	u64 val;
 
 	if (strict_strtoull(buf, 0, &val) < 0) {
-		printk(KERN_ERR "Failed param conversion\n");
+		pr_err("Invalid parameter to mfreq\n");
 		return 0;
 	}
 	if (val)
@@ -306,9 +306,9 @@ static int __init msm_cpufreq_register(void)
 	int cpu;
 
 	int err = sysfs_create_file(&cpu_sysdev_class.kset.kobj,
-		&attr_mfreq.attr);
+			&attr_mfreq.attr);
 	if (err)
-		printk(KERN_ERR "Failed to create sysfs mfreq\n");
+		pr_err("Failed to create sysfs mfreq\n");
 
 	for_each_possible_cpu(cpu) {
 		mutex_init(&(per_cpu(cpufreq_suspend, cpu).suspend_mutex));
