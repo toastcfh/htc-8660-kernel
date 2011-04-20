@@ -55,12 +55,15 @@
 
 
 #include <asm/unaligned.h>
+#include <plat/omap-pm.h>
 
 
-/* Thanks to NetChip Technologies for donating this product ID.
+/*
+ * Thanks to NetChip Technologies for donating this product ID.
  *
  * DO NOT REUSE THESE IDs with any other driver!!  Ever!!
- * Instead:  allocate your own, using normal USB-IF procedures. */
+ * Instead:  allocate your own, using normal USB-IF procedures.
+ */
 #define FSG_VENDOR_ID	0x0525	/* NetChip */
 #define FSG_PRODUCT_ID	0xa4a5	/* Linux-USB File-backed Storage Gadget */
 
@@ -84,14 +87,27 @@
 #define LWARN(lun, fmt, args...)  dev_warn(&(lun)->dev, fmt, ## args)
 #define LINFO(lun, fmt, args...)  dev_info(&(lun)->dev, fmt, ## args)
 
-/* Keep those macros in sync with thos in
- * include/linux/ubs/composite.h or else GCC will complain.  If they
+/*
+ * Keep those macros in sync with those in
+ * include/linux/usb/composite.h or else GCC will complain.  If they
  * are identical (the same names of arguments, white spaces in the
  * same places) GCC will allow redefinition otherwise (even if some
- * white space is removed or added) warning will be issued.  No
- * checking if those symbols is defined is performed because warning
- * is desired when those macros were defined by someone else to mean
- * something else. */
+ * white space is removed or added) warning will be issued.
+ *
+ * Those macros are needed here because File Storage Gadget does not
+ * include the composite.h header.  For composite gadgets those macros
+ * are redundant since composite.h is included any way.
+ *
+ * One could check whether those macros are already defined (which
+ * would indicate composite.h had been included) or not (which would
+ * indicate we were in FSG) but this is not done because a warning is
+ * desired if definitions here differ from the ones in composite.h.
+ *
+ * We want the definitions to match and be the same in File Storage
+ * Gadget as well as Mass Storage Function (and so composite gadgets
+ * using MSF).  If someone changes them in composite.h it will produce
+ * a warning in this file when building MSF.
+ */
 #define DBG(d, fmt, args...)     dev_dbg(&(d)->gadget->dev , fmt , ## args)
 #define VDBG(d, fmt, args...)    dev_vdbg(&(d)->gadget->dev , fmt , ## args)
 #define ERROR(d, fmt, args...)   dev_err(&(d)->gadget->dev , fmt , ## args)
@@ -232,15 +248,7 @@ struct interrupt_data {
 #define SC_WRITE_6			0x0a
 #define SC_WRITE_10			0x2a
 #define SC_WRITE_12			0xaa
-#define SC_PASCAL_MODE		0xff
 
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : define vendor command code */
-#define SC_VENDOR_START			0xe4
-#define SC_VENDOR_END			0xef
-/* [ADD END] 2011/04/15 KDDI : define vendor command code */
-
-#endif
 /* SCSI Sense Key/Additional Sense Code/ASC Qualifier values */
 #define SS_NO_SENSE				0
 #define SS_COMMUNICATION_FAILURE		0x040800
@@ -261,43 +269,6 @@ struct interrupt_data {
 #define ASC(x)		((u8) ((x) >> 8))
 #define ASCQ(x)		((u8) (x))
 
-#ifdef CONFIG_LISMO
-
-/* [ADD START] 2011/04/15 KDDI : define count of vendor command */
-#define VENDOR_CMD_NR	(SC_VENDOR_END - SC_VENDOR_START + 1)
-/* [ADD END] 2011/04/15 KDDI : define count of vendor command */
-/* [ADD START] 2011/05/18 KDDI : define inquiry command init response */
-#define INQUIRY_VENDOR_INIT	"LISMOSC1"
-/* [ADD END] 2011/05/18 KDDI : define inquiry command init response */
-
-/* [ADD START] 2011/05/26 KDDI : inquiry respons [Vendor specific]length)*/
-#define INQUIRY_VENDOR_SPECIFIC_SIZE 20 /* Size of InquiryResponse VendorSpecific */
-/* [ADD END] 2011/05/26 KDDI : inquiry respons [Vendor specific]length)*/
-
-/*-------------------------------------------------------------------------*/
-
-/* [ADD START] 2011/04/15 KDDI : etc define for vendor command */
-struct op_desc {
-	struct device	dev;
-	unsigned long	flags;
-/* flag symbols are bit numbers */
-#define FLAG_IS_READ	0
-#define FLAG_IS_WRITE	1
-#define FLAG_EXPORT	2	/* protected by sysfs_lock */
-
-	char			*buffer;
-	size_t			len;
-	struct bin_attribute	dev_bin_attr_buffer;
-	unsigned long 		update;
-	struct work_struct	work;
-	struct sysfs_dirent	*value_sd;
-};
-static void op_release(struct device *dev);
-
-static DEFINE_MUTEX(sysfs_lock);
-/* [ADD END] 2011/04/15 KDDI : etc define for vendor command */
-
-#endif
 
 /*-------------------------------------------------------------------------*/
 
@@ -314,24 +285,13 @@ struct fsg_lun {
 	unsigned int	prevent_medium_removal:1;
 	unsigned int	registered:1;
 	unsigned int	info_valid:1;
+	unsigned int	nofua:1;
 
 	u32		sense_data;
 	u32		sense_data_info;
 	u32		unit_attention_data;
 
 	struct device	dev;
-#ifdef CONFIG_LISMO
-
-/* [ADD START] 2011/04/15 KDDI : add define to device struct */
-	struct op_desc *op_desc[VENDOR_CMD_NR];
-
-/* [CHANGE START] 2011/05/26 KDDI : add Vendor specific length */
-	/* Vendor specific and NUL byte */
-	char inquiry_vendor[INQUIRY_VENDOR_SPECIFIC_SIZE + 1];
-/* [CHANGE END] 2011/05/26 KDDI : add Vendor specific length */
-/* [ADD END] 2011/04/15 KDDI : add define to device struct */
-
-#endif
 };
 
 #define fsg_lun_is_open(curlun)	((curlun)->filp != NULL)
@@ -340,25 +300,17 @@ static struct fsg_lun *fsg_lun_from_dev(struct device *dev)
 {
 	return container_of(dev, struct fsg_lun, dev);
 }
-#ifdef CONFIG_LISMO
 
-/* [ADD START] 2011/04/15 KDDI : define container(adress_get) */
-static struct op_desc *dev_to_desc(struct device *dev)
-{
-	return container_of(dev, struct op_desc, dev);
-}
-/* [ADD END] 2011/04/15 KDDI : define container(adress_get)*/
-#endif
 
 /* Big enough to hold our biggest descriptor */
 #define EP0_BUFSIZE	256
 #define DELAYED_STATUS	(EP0_BUFSIZE + 999)	/* An impossibly large value */
 
 /* Number of buffers we will use.  2 is enough for double-buffering */
-#define FSG_NUM_BUFFERS	8
+#define FSG_NUM_BUFFERS	2
 
 /* Default size of buffer length. */
-#define FSG_BUFLEN	((u32)16384)
+#define FSG_BUFLEN	((u32)32768)
 
 /* Maximal number of LUNs supported in mass storage function */
 #define FSG_MAX_LUNS	8
@@ -378,9 +330,11 @@ struct fsg_buffhd {
 	enum fsg_buffer_state		state;
 	struct fsg_buffhd		*next;
 
-	/* The NetChip 2280 is faster, and handles some protocol faults
+	/*
+	 * The NetChip 2280 is faster, and handles some protocol faults
 	 * better, if we don't submit any short bulk-out read requests.
-	 * So we will record the intended request length here. */
+	 * So we will record the intended request length here.
+	 */
 	unsigned int			bulk_out_intended_length;
 
 	struct usb_request		*inreq;
@@ -460,8 +414,10 @@ fsg_intf_desc = {
 	.iInterface =		FSG_STRING_INTERFACE,
 };
 
-/* Three full-speed endpoint descriptors: bulk-in, bulk-out,
- * and interrupt-in. */
+/*
+ * Three full-speed endpoint descriptors: bulk-in, bulk-out, and
+ * interrupt-in.
+ */
 
 static struct usb_endpoint_descriptor
 fsg_fs_bulk_in_desc = {
@@ -524,7 +480,7 @@ static struct usb_descriptor_header *fsg_fs_function[] = {
  *
  * That means alternate endpoint descriptors (bigger packets)
  * and a "device qualifier" ... plus more construction options
- * for the config descriptor.
+ * for the configuration descriptor.
  */
 static struct usb_endpoint_descriptor
 fsg_hs_bulk_in_desc = {
@@ -612,8 +568,10 @@ static struct usb_gadget_strings	fsg_stringtab = {
 
  /*-------------------------------------------------------------------------*/
 
-/* If the next two routines are called while the gadget is registered,
- * the caller must own fsg->filesem for writing. */
+/*
+ * If the next two routines are called while the gadget is registered,
+ * the caller must own fsg->filesem for writing.
+ */
 
 static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 {
@@ -652,8 +610,10 @@ static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 		goto out;
 	}
 
-	/* If we can't read the file, it's no good.
-	 * If we can't write the file, use it read-only. */
+	/*
+	 * If we can't read the file, it's no good.
+	 * If we can't write the file, use it read-only.
+	 */
 	if (!filp->f_op || !(filp->f_op->read || filp->f_op->aio_read)) {
 		LINFO(curlun, "file not readable: %s\n", filename);
 		goto out;
@@ -692,6 +652,8 @@ static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 	curlun->num_sectors = num_sectors;
 	LDBG(curlun, "open backing file: %s\n", filename);
 	rc = 0;
+	/* Hold 800 MHz MPU constarint */
+	omap_pm_set_min_mpu_freq((struct device *) curlun, 800000000);
 
 out:
 	filp_close(filp, current->files);
@@ -705,27 +667,25 @@ static void fsg_lun_close(struct fsg_lun *curlun)
 		LDBG(curlun, "close backing file\n");
 		fput(curlun->filp);
 		curlun->filp = NULL;
+		/* Release MPU freq constarint */
+		omap_pm_set_min_mpu_freq((struct device *) curlun, -1);
 	}
 }
 
 
 /*-------------------------------------------------------------------------*/
 
-/* Sync the file data, don't bother with the metadata.
- * This code was copied from fs/buffer.c:sys_fdatasync(). */
+/*
+ * Sync the file data, don't bother with the metadata.
+ * This code was copied from fs/buffer.c:sys_fdatasync().
+ */
 static int fsg_lun_fsync_sub(struct fsg_lun *curlun)
 {
 	struct file	*filp = curlun->filp;
-	int ret = 0;
 
 	if (curlun->ro || !filp)
 		return 0;
-
-	printk(KERN_DEBUG "vfs_fsync++\n");
-	ret = vfs_fsync(filp, 1);
-	printk(KERN_DEBUG "vfs_fsync--\n");
-
-	return ret;
+	return vfs_fsync(filp, 1);
 }
 
 static void store_cdrom_address(u8 *dest, int msf, u32 addr)
@@ -758,6 +718,14 @@ static ssize_t fsg_show_ro(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%d\n", fsg_lun_is_open(curlun)
 				  ? curlun->ro
 				  : curlun->initially_ro);
+}
+
+static ssize_t fsg_show_nofua(struct device *dev, struct device_attribute *attr,
+			      char *buf)
+{
+	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
+
+	return sprintf(buf, "%u\n", curlun->nofua);
 }
 
 static ssize_t fsg_show_file(struct device *dev, struct device_attribute *attr,
@@ -794,24 +762,45 @@ static ssize_t fsg_store_ro(struct device *dev, struct device_attribute *attr,
 	ssize_t		rc = count;
 	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
-	int		i;
+	unsigned long	ro;
 
-	if (sscanf(buf, "%d", &i) != 1)
+	if (strict_strtoul(buf, 2, &ro))
 		return -EINVAL;
 
-	/* Allow the write-enable status to change only while the backing file
-	 * is closed. */
+	/*
+	 * Allow the write-enable status to change only while the
+	 * backing file is closed.
+	 */
 	down_read(filesem);
 	if (fsg_lun_is_open(curlun)) {
 		LDBG(curlun, "read-only status change prevented\n");
 		rc = -EBUSY;
 	} else {
-		curlun->ro = !!i;
-		curlun->initially_ro = !!i;
+		curlun->ro = ro;
+		curlun->initially_ro = ro;
 		LDBG(curlun, "read-only status set to %d\n", curlun->ro);
 	}
 	up_read(filesem);
 	return rc;
+}
+
+static ssize_t fsg_store_nofua(struct device *dev,
+			       struct device_attribute *attr,
+			       const char *buf, size_t count)
+{
+	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
+	unsigned long	nofua;
+
+	if (strict_strtoul(buf, 2, &nofua))
+		return -EINVAL;
+
+	/* Sync data when switching from async mode to sync */
+	if (!nofua && curlun->nofua)
+		fsg_lun_fsync_sub(curlun);
+
+	curlun->nofua = nofua;
+
+	return count;
 }
 
 static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
@@ -820,6 +809,7 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
 	int		rc = 0;
+
 
 #ifndef CONFIG_USB_ANDROID_MASS_STORAGE
 	/* disabled in android because we need to allow closing the backing file

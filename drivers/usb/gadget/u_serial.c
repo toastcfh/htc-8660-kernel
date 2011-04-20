@@ -18,6 +18,7 @@
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
+#include <linux/sched.h>
 #include <linux/interrupt.h>
 #include <linux/device.h>
 #include <linux/delay.h>
@@ -354,14 +355,9 @@ __acquires(&port->port_lock)
 */
 {
 	struct list_head	*pool = &port->write_pool;
-	struct usb_ep		*in;
+	struct usb_ep		*in = port->port_usb->in;
 	int			status = 0;
 	bool			do_tty_wake = false;
-
-	if (port->port_usb)
-		in = port->port_usb->in;
-	else
-		return 0;
 
 	while (!list_empty(pool)) {
 		struct usb_request	*req;
@@ -421,13 +417,8 @@ __acquires(&port->port_lock)
 */
 {
 	struct list_head	*pool = &port->read_pool;
-	struct usb_ep		*out;
+	struct usb_ep		*out = port->port_usb->out;
 	unsigned		started = 0;
-
-	if (port->port_usb)
-		out = port->port_usb->out;
-	else
-		return 0;
 
 	while (!list_empty(pool)) {
 		struct usb_request	*req;
@@ -981,23 +972,6 @@ static void gs_unthrottle(struct tty_struct *tty)
 	spin_unlock_irqrestore(&port->port_lock, flags);
 }
 
-static void gs_throttle(struct tty_struct *tty)
-{
-	struct gs_port		*port = tty->driver_data;
-
-	printk(KERN_INFO "%s %d: read_cnt: %d, rcv_room: %d\n", __func__,
-		port->port_num, tty->read_cnt, tty->receive_room);
-
-	/* 128 is threshold defined in n_tty.c */
-	if (tty->receive_room >= 128) {
-		printk(KERN_INFO "WA: race condition happens.\n");
-		if (test_and_clear_bit(TTY_THROTTLED, &tty->flags) &&
-		    tty->ops->unthrottle)
-			tty->ops->unthrottle(tty);
-	}
-
-}
-
 static int gs_break_ctl(struct tty_struct *tty, int duration)
 {
 	struct gs_port	*port = tty->driver_data;
@@ -1024,7 +998,6 @@ static const struct tty_operations gs_tty_ops = {
 	.flush_chars =		gs_flush_chars,
 	.write_room =		gs_write_room,
 	.chars_in_buffer =	gs_chars_in_buffer,
-	.throttle =		gs_throttle,
 	.unthrottle =		gs_unthrottle,
 	.break_ctl =		gs_break_ctl,
 };
@@ -1033,7 +1006,7 @@ static const struct tty_operations gs_tty_ops = {
 
 static struct tty_driver *gs_tty_driver;
 
-static int __init
+static int
 gs_port_alloc(unsigned port_num, struct usb_cdc_line_coding *coding)
 {
 	struct gs_port	*port;
@@ -1079,7 +1052,7 @@ gs_port_alloc(unsigned port_num, struct usb_cdc_line_coding *coding)
  *
  * Returns negative errno or zero.
  */
-int __init gserial_setup(struct usb_gadget *g, unsigned count)
+int gserial_setup(struct usb_gadget *g, unsigned count)
 {
 	unsigned			i;
 	struct usb_cdc_line_coding	coding;
@@ -1128,8 +1101,6 @@ int __init gserial_setup(struct usb_gadget *g, unsigned count)
 		}
 	}
 	n_ports = count;
-
-	gs_tty_driver->need_rcv_lock = 1;
 
 	/* export the driver ... */
 	status = tty_register_driver(gs_tty_driver);
@@ -1268,7 +1239,6 @@ int gserial_connect(struct gserial *gser, u8 port_num)
 	spin_lock_irqsave(&port->port_lock, flags);
 	gser->ioport = port;
 	port->port_usb = gser;
-	port->rx_qcnt = 0;
 
 	/* REVISIT unclear how best to handle this state...
 	 * we don't really couple it with the Linux TTY.

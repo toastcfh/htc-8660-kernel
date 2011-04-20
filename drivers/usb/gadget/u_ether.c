@@ -31,9 +31,6 @@
 
 #include "u_ether.h"
 
-#ifdef CONFIG_USB_ETH_PASS_FW
-#include "passthru.h"
-#endif
 
 /*
  * This component encapsulates the Ethernet link glue needed to provide
@@ -98,12 +95,7 @@ struct eth_dev {
 
 #ifdef CONFIG_USB_GADGET_DUALSPEED
 
-#ifdef CONFIG_USB_GADGET_ETHER_QMULT
-static unsigned qmult = CONFIG_USB_GADGET_ETHER_QMULT;
-#else
-static unsigned qmult = 10;
-#endif
-
+static unsigned qmult = 5;
 module_param(qmult, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(qmult, "queue length multiplier at high speed");
 
@@ -258,7 +250,12 @@ rx_submit(struct eth_dev *dev, struct usb_request *req, gfp_t gfp_flags)
 	 * but on at least one, checksumming fails otherwise.  Note:
 	 * RNDIS headers involve variable numbers of LE32 values.
 	 */
-	skb_reserve(skb, NET_IP_ALIGN);
+	/*
+	 * RX: Do not move data by IP_ALIGN:
+	 * if your DMA controller cannot handle it
+	 */
+	if (!gadget_dma32(dev->gadget))
+		skb_reserve(skb, NET_IP_ALIGN);
 
 	req->buf = skb->data;
 	req->length = size;
@@ -291,6 +288,12 @@ static void rx_complete(struct usb_ep *ep, struct usb_request *req)
 	/* normal completion */
 	case 0:
 		skb_put(skb, req->actual);
+		if (gadget_dma32(dev->gadget) && NET_IP_ALIGN) {
+			u8 *data = skb->data;
+			size_t len = skb_headlen(skb);
+			skb_reserve(skb, NET_IP_ALIGN);
+			memmove(skb->data, data, len);
+		}
 
 		if (dev->unwrap) {
 			unsigned long	flags;
@@ -321,12 +324,6 @@ static void rx_complete(struct usb_ep *ep, struct usb_request *req)
 				dev_kfree_skb_any(skb2);
 				goto next_frame;
 			}
-
-#ifdef CONFIG_USB_ETH_PASS_FW
-		//	ipt_dump_packet(skb2->data, skb2->len, 0);
-			ipt_decap_packet(skb2);
-#endif
-
 			skb2->protocol = eth_type_trans(skb2, dev->net);
 			dev->net->stats.rx_packets++;
 			dev->net->stats.rx_bytes += skb2->len;
@@ -351,8 +348,7 @@ next_frame:
 		DBG(dev, "rx %s reset\n", ep->name);
 		defer_kevent(dev, WORK_RX_MEMORY);
 quiesce:
-		if (skb)
-			dev_kfree_skb_any(skb);
+		dev_kfree_skb_any(skb);
 		goto clean;
 
 	/* data overrun */
@@ -554,13 +550,6 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 		/* ignores USB_CDC_PACKET_TYPE_DIRECTED */
 	}
 
-#ifdef CONFIG_USB_ETH_PASS_FW
-//	if (skb)
-//		ipt_dump_packet(skb->data, skb->len, 1);
-	if (ipt_encap_packet(skb))
-		return NETDEV_TX_OK;
-#endif
-
 	spin_lock_irqsave(&dev->req_lock, flags);
 	/*
 	 * this freelist can be empty if an interrupt triggered disconnect()
@@ -596,6 +585,24 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 
 		length = skb->len;
 	}
+
+	/*
+	 * Align data to 32bit if the dma controller requires it
+	 */
+	if (gadget_dma32(dev->gadget)) {
+		unsigned long align = (unsigned long)skb->data & 3;
+		if (WARN_ON(skb_headroom(skb) < align)) {
+			dev_kfree_skb_any(skb);
+			goto drop;
+		} else if (align) {
+			u8 *data = skb->data;
+			size_t len = skb_headlen(skb);
+			skb->data -= align;
+			memmove(skb->data, data, len);
+			skb_set_tail_pointer(skb, len);
+		}
+	}
+
 	req->buf = skb->data;
 	req->context = skb;
 	req->complete = tx_complete;
@@ -668,10 +675,6 @@ static int eth_open(struct net_device *net)
 		link->open(link);
 	spin_unlock_irq(&dev->lock);
 
-#ifdef CONFIG_USB_ETH_PASS_FW
-	ipt_open(net);
-#endif
-
 	return 0;
 }
 
@@ -679,10 +682,6 @@ static int eth_stop(struct net_device *net)
 {
 	struct eth_dev	*dev = netdev_priv(net);
 	unsigned long	flags;
-
-#ifdef CONFIG_USB_ETH_PASS_FW
-	ipt_close();
-#endif
 
 	VDBG(dev, "%s\n", __func__);
 	netif_stop_queue(net);
@@ -734,17 +733,6 @@ static char *host_addr;
 module_param(host_addr, charp, S_IRUGO);
 MODULE_PARM_DESC(host_addr, "Host Ethernet Address");
 
-
-static u8 __init nibble(unsigned char c)
-{
-	if (isdigit(c))
-		return c - '0';
-	c = toupper(c);
-	if (isxdigit(c))
-		return 10 + c - 'A';
-	return 0;
-}
-
 static int get_ether_addr(const char *str, u8 *dev_addr)
 {
 	if (str) {
@@ -755,8 +743,8 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 
 			if ((*str == '.') || (*str == ':'))
 				str++;
-			num = nibble(*str++) << 4;
-			num |= (nibble(*str++));
+			num = hex_to_bin(*str++) << 4;
+			num |= hex_to_bin(*str++);
 			dev_addr [i] = num;
 		}
 		if (is_valid_ether_addr(dev_addr))
@@ -925,7 +913,7 @@ struct net_device *gether_connect(struct gether *link)
 
 	if (result == 0) {
 		dev->zlp = link->is_zlp_ok;
-		INFO(dev, "[USB] ether qlen %d\n", qlen(dev->gadget));
+		DBG(dev, "qlen %d\n", qlen(dev->gadget));
 
 		dev->header_len = link->header_len;
 		dev->unwrap = link->unwrap;

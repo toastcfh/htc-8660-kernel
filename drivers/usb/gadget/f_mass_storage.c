@@ -73,6 +73,8 @@
  *				being removable.
  *	->cdrom		Flag specifying that LUN shall be reported as
  *				being a CD-ROM.
+ *	->nofua		Flag specifying that FUA flag in SCSI WRITE(10,12)
+ *				commands for this LUN shall be ignored.
  *
  *	lun_name_format	A printf-like format for names of the LUN
  *				devices.  This determines how the
@@ -127,6 +129,8 @@
  *			Default true, boolean for removable media.
  *	cdrom=b[,b...]	Default false, boolean for whether to emulate
  *				a CD-ROM drive.
+ *	nofua=b[,b...]	Default false, booleans for ignore FUA flag
+ *				in SCSI WRITE(10,12) commands
  *	luns=N		Default N = number of filenames, number of
  *				LUNs to support.
  *	stall		Default determined according to the type of
@@ -287,6 +291,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/string.h>
+#include <linux/switch.h>
 #include <linux/freezer.h>
 #include <linux/utsname.h>
 
@@ -295,12 +300,8 @@
 
 #include "gadget_chips.h"
 
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-#include <linux/usb/android_composite.h>
-#include <linux/platform_device.h>
+#define FUNCTION_NAME          "usb_mass_storage"
 
-#define FUNCTION_NAME		"usb_mass_storage"
-#endif
 
 /*------------------------------------------------------------------------*/
 
@@ -317,14 +318,37 @@ static const char fsg_string_interface[] = "Mass Storage";
 
 #include "storage_common.c"
 
+
 /*-------------------------------------------------------------------------*/
 
 struct fsg_dev;
+struct fsg_common;
+
+/* FSF callback functions */
+struct fsg_operations {
+	/* Callback function to call when thread exits.  If no
+	 * callback is set or it returns value lower then zero MSF
+	 * will force eject all LUNs it operates on (including those
+	 * marked as non-removable or with prevent_medium_removal flag
+	 * set). */
+	int (*thread_exits)(struct fsg_common *common);
+
+	/* Called prior to ejection.  Negative return means error,
+	 * zero means to continue with ejection, positive means not to
+	 * eject. */
+	int (*pre_eject)(struct fsg_common *common,
+			 struct fsg_lun *lun, int num);
+	/* Called after ejection.  Negative return means error, zero
+	 * or positive is just a success. */
+	int (*post_eject)(struct fsg_common *common,
+			  struct fsg_lun *lun, int num);
+};
 
 
 /* Data shared by all the FSG instances. */
 struct fsg_common {
 	struct usb_gadget	*gadget;
+	struct usb_composite_dev *cdev;
 	struct fsg_dev		*fsg, *new_fsg;
 	wait_queue_head_t	fsg_wait;
 
@@ -337,7 +361,6 @@ struct fsg_common {
 	struct usb_ep		*ep0;		/* Copy of gadget->ep0 */
 	struct usb_request	*ep0req;	/* Copy of cdev->req */
 	unsigned int		ep0_req_tag;
-	const char		*ep0req_name;
 
 	struct fsg_buffhd	*next_buffhd_to_fill;
 	struct fsg_buffhd	*next_buffhd_to_drain;
@@ -373,8 +396,8 @@ struct fsg_common {
 	struct completion	thread_notifier;
 	struct task_struct	*thread_task;
 
-	/* Callback function to call when thread exits. */
-	int			(*thread_exits)(struct fsg_common *common);
+	/* Callback functions. */
+	const struct fsg_operations	*ops;
 	/* Gadget's private data. */
 	void			*private_data;
 
@@ -383,6 +406,7 @@ struct fsg_common {
 	char inquiry_string[8 + 16 + 4 + 1];
 
 	struct kref		ref;
+	struct switch_dev	sdev;
 };
 
 
@@ -393,17 +417,14 @@ struct fsg_config {
 		char ro;
 		char removable;
 		char cdrom;
+		char nofua;
 	} luns[FSG_MAX_LUNS];
 
 	const char		*lun_name_format;
 	const char		*thread_name;
 
-	/* Callback function to call when thread exits.  If no
-	 * callback is set or it returns value lower then zero MSF
-	 * will force eject all LUNs it operates on (including those
-	 * marked as non-removable or with prevent_medium_removal flag
-	 * set). */
-	int			(*thread_exits)(struct fsg_common *common);
+	/* Callback functions. */
+	const struct fsg_operations	*ops;
 	/* Gadget's private data. */
 	void			*private_data;
 
@@ -412,11 +433,8 @@ struct fsg_config {
 	u16 release;
 
 	char			can_stall;
-
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-	struct platform_device *pdev;
-#endif
 };
+
 
 struct fsg_dev {
 	struct usb_function	function;
@@ -441,7 +459,8 @@ static inline int __fsg_is_set(struct fsg_common *common,
 {
 	if (common->fsg)
 		return 1;
-	printk(KERN_WARNING "common->fsg is NULL in %s at %u\n", func, line);
+	ERROR(common, "common->fsg is NULL in %s at %u\n", func, line);
+	WARN_ON(1);
 	return 0;
 }
 
@@ -616,6 +635,7 @@ static int fsg_setup(struct usb_function *f,
 		/* Raise an exception to stop the current operation
 		 * and reinitialize our state. */
 		DBG(fsg, "bulk reset request\n");
+		fsg->common->ep0req->length = 0;
 		raise_exception(fsg->common, FSG_STATE_RESET);
 		return DELAYED_STATUS;
 
@@ -630,8 +650,6 @@ static int fsg_setup(struct usb_function *f,
 
 		/* Respond with data/status */
 		req->length = min((u16)1, w_length);
-		fsg->common->ep0req_name =
-			ctrl->bRequestType & USB_DIR_IN ? "ep0-in" : "ep0-out";
 		return ep0_queue(fsg->common);
 	}
 
@@ -678,16 +696,6 @@ static void start_transfer(struct fsg_dev *fsg, struct usb_ep *ep,
 					ep->name, rc);
 	}
 }
-#define START_TRANSFER_OR(common, ep_name, req, pbusy, state)		\
-	if (fsg_is_set(common))						\
-		start_transfer((common)->fsg, (common)->fsg->ep_name,	\
-			       req, pbusy, state);			\
-	else
-
-#define START_TRANSFER(common, ep_name, req, pbusy, state)		\
-	START_TRANSFER_OR(common, ep_name, req, pbusy, state) (void)0
-
-
 
 #define START_TRANSFER_OR(common, ep_name, req, pbusy, state)		\
 	if (fsg_is_set(common))						\
@@ -849,107 +857,8 @@ static int do_read(struct fsg_common *common)
 
 	return -EIO;		/* No default reply */
 }
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : vender read command */
-/*-------------------------------------------------------------------------*/
-static int do_read_buffer(struct fsg_common *common)
-{
-	struct fsg_lun		*curlun = common->curlun;
-	struct fsg_buffhd	*bh;
-	int			rc;
-	u32			amount_left;
-	loff_t			file_offset;
-	unsigned int		amount;
-	struct op_desc		*desc = 0;
-
-	file_offset = get_unaligned_be32(&common->cmnd[2]);
-
-	/* Get the starting Logical Block Address and check that it's
-	 * not too big */
-//	printk("%s: cmd=%d\n", __func__, common->cmnd[0]);
-	desc = curlun->op_desc[common->cmnd[0]-SC_VENDOR_START];
-	if (!desc->buffer){
-		printk("%s: cmd=%d not ready\n", __func__, common->cmnd[0]);
-		curlun->sense_data =
-				SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
-		curlun->sense_data_info = file_offset;
-		curlun->info_valid = 1;
-		return -EIO;		/* No default reply */
-	}
 
 
-	/* Carry out the file reads */
-	amount_left = common->data_size_from_cmnd;
-
-//	printk("%s: amount_left=%x\n", __func__, amount_left);
-	if (unlikely(amount_left == 0))
-		return -EIO;		/* No default reply */
-
-//	printk("%s: buf_size=%x\n", __func__, common->buf_size);
-
-	for (;;) {
-//		printk("%s: file_offset=%x\n", __func__, (unsigned int)file_offset);
-
-		/* Figure out how much we need to read:
-		 * Try to read the remaining amount.
-		 * But don't read more than the buffer size.
-		 * And don't try to read past the end of the file.
-		 * Finally, if we're not at a page boundary, don't read past
-		 *	the next page.
-		 * If this means reading 0 then we were asked to read past
-		 *	the end of file. */
-		amount = min(amount_left, FSG_BUFLEN);
-		amount = min((loff_t) amount, desc->len - file_offset);
-//		printk("%s: amount=%x\n", __func__, amount);
-
-		/* Wait for the next buffer to become available */
-		bh = common->next_buffhd_to_fill;
-		while (bh->state != BUF_STATE_EMPTY) {
-			rc = sleep_thread(common);
-			if (rc)
-				return rc;
-		}
-//		printk("%s: wait buffer ok\n", __func__);
-
-		/* If we were asked to read past the end of file,
-		 * end with an empty buffer. */
-		if (amount == 0) {
-			curlun->sense_data =
-					SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
-			curlun->sense_data_info = file_offset;
-			curlun->info_valid = 1;
-			bh->inreq->length = 0;
-			bh->state = BUF_STATE_FULL;
-			break;
-		}
-
-		memcpy((char __user *) bh->buf, desc->buffer + file_offset, amount);
-
-		file_offset  += amount;
-		amount_left  -= amount;
-		common->residue -= amount;
-		bh->inreq->length = amount;
-		bh->state = BUF_STATE_FULL;
-
-		if (amount_left == 0)
-			break;		/* No more left to read */
-
-		/* Send this buffer and go read some more */
-		START_TRANSFER_OR(common, bulk_in, bh->inreq,
-				&bh->inreq_busy, &bh->state)
-			/* Don't know what to do if
-			 * common->fsg is NULL */
-			return -EIO;
-		common->next_buffhd_to_fill = bh->next;
-	}
-	return -EIO;		/* No default reply */
-}
-
-/*-------------------------------------------------------------------------*/
-/* [ADD END] 2011/04/15 KDDI : vender read command*/
-
-
-#endif
 /*-------------------------------------------------------------------------*/
 
 static int do_write(struct fsg_common *common)
@@ -988,7 +897,7 @@ static int do_write(struct fsg_common *common)
 			curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
 			return -EINVAL;
 		}
-		if (common->cmnd[1] & 0x08) {	/* FUA */
+		if (!curlun->nofua && (common->cmnd[1] & 0x08)) { /* FUA */
 			spin_lock(&curlun->filp->f_lock);
 			curlun->filp->f_flags |= O_SYNC;
 			spin_unlock(&curlun->filp->f_lock);
@@ -1142,157 +1051,9 @@ static int do_write(struct fsg_common *common)
 	return -EIO;		/* No default reply */
 }
 
-#ifdef CONFIG_LISMO
-
-
-
-/* [ADD START] 2011/04/15 KDDI : vender write command */
-/* [CHANGE START] 2011/05/27 KDDI : [offset]use change */
-/*-------------------------------------------------------------------------*/
-
-static int do_write_buffer(struct fsg_common *common)
-{
-	struct fsg_lun		*curlun = common->curlun;
-	struct fsg_buffhd	*bh;
-	int			get_some_more;
-	u32			amount_left_to_req, amount_left_to_write;
-	loff_t			file_offset;
-	unsigned int		amount;
-	int			rc;
-	struct op_desc		*desc = 0;
-
-	get_some_more = 1;
-	file_offset = get_unaligned_be32(&common->cmnd[2]);
-
-//	printk("%s: cmd=%d\n", __func__, common->cmnd[0]);
-	desc = curlun->op_desc[common->cmnd[0]-SC_VENDOR_START];
-	if (!desc->buffer){
-		printk("%s: cmd=%d not ready\n", __func__, common->cmnd[0]);
-		curlun->sense_data =
-				SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
-		curlun->sense_data_info = file_offset;
-		curlun->info_valid = 1;
-		return -EIO;		/* No default reply */
-	}
-
-	amount_left_to_req = amount_left_to_write = common->data_size_from_cmnd;
-//	printk("%s: amount_left_to_write=%d\n", __func__, amount_left_to_write);
-//	printk("%s: file_offset=%x\n", __func__, (unsigned int)file_offset);
-//	printk("%s: desc->len=%x\n", __func__, desc->len);
-	if (file_offset + amount_left_to_write > desc->len) {
-		printk("%s: vendor buffer out of range offset=0x%x write-len=0x%x buf-len=0x%x\n",
-			__func__, (unsigned int)file_offset, amount_left_to_req, desc->len);
-		curlun->sense_data =
-				SS_LOGICAL_BLOCK_ADDRESS_OUT_OF_RANGE;
-		curlun->sense_data_info = file_offset;
-		curlun->info_valid = 1;
-		return -EIO;		/* No default reply */
-	}
-
-	while (amount_left_to_write > 0) {
-
-		/* Queue a request for more data from the host */
-		bh = common->next_buffhd_to_fill;
-		if (bh->state == BUF_STATE_EMPTY && get_some_more) {
-
-			/* Figure out how much we want to get:
-			 * Try to get the remaining amount.
-			 * But don't get more than the buffer size.
-			 * And don't try to go past the end of the file.
-			 * If we're not at a page boundary,
-			 *	don't go past the next page.
-			 * If this means getting 0, then we were asked
-			 *	to write past the end of file.
-			 * Finally, round down to a block boundary. */
-			amount = min(amount_left_to_req, FSG_BUFLEN);
-//	printk("%s: (2)amount=0x%x\n", __func__, amount);
-
-			/* Get the next buffer */
-			common->usb_amount_left -= amount;
-			amount_left_to_req -= amount;
-			if (amount_left_to_req == 0)
-				get_some_more = 0;
-
-//	printk("%s: (3)amount=0x%x\n", __func__, amount);
-//	printk("%s: (3)amount_left_to_req=0x%x\n", __func__, amount_left_to_req);
-//	printk("%s: (3)get_some_more=%d bh->state =%d \n", __func__,get_some_more,bh->state);
-
-			/* amount is always divisible by 512, hence by
-			 * the bulk-out maxpacket size */
-			bh->outreq->length = bh->bulk_out_intended_length =
-					amount;
-			START_TRANSFER_OR(common, bulk_out, bh->outreq,
-					&bh->outreq_busy, &bh->state)
-				/* Don't know what to do if
-				 * common->fsg is NULL */
-				return -EIO;
-			common->next_buffhd_to_fill = bh->next;
-			continue;
-		}
-
-		/* Write the received data to the backing file */
-		bh = common->next_buffhd_to_drain;
-		if (bh->state == BUF_STATE_EMPTY && !get_some_more) {
-			break;			/* We stopped early */
-		}
-		if (bh->state == BUF_STATE_FULL) {
-			smp_rmb();
-			common->next_buffhd_to_drain = bh->next;
-			bh->state = BUF_STATE_EMPTY;
-
-			/* Did something go wrong with the transfer? */
-			if (bh->outreq->status != 0) {
-				curlun->sense_data = SS_COMMUNICATION_FAILURE;
-				curlun->sense_data_info = file_offset >> 9;
-				curlun->info_valid = 1;
-				break;
-			}
-
-			amount = bh->outreq->actual;
-			if (desc->len - file_offset < amount) {
-				LERROR(curlun,
-	"write %u @ %llu beyond end %llu\n",
-	amount, (unsigned long long) file_offset,
-	(unsigned long long) desc->len);
-				amount = desc->len - file_offset;
-			}
-
-			/* Perform the write */
-//	printk("%s: (4)buf-write offset=0x%x size=0x%x \n", __func__,(unsigned int)file_offset,amount);
-			memcpy(desc->buffer + file_offset, (char __user *) bh->buf, amount);
-			file_offset += amount;
-			amount_left_to_write -= amount;
-			common->residue -= amount;
-
-#ifdef MAX_UNFLUSHED_BYTES
-			curlun->unflushed_bytes += amount;
-			if (curlun->unflushed_bytes >= MAX_UNFLUSHED_BYTES) {
-				fsync_sub(curlun);
-				curlun->unflushed_bytes = 0;
-			}
-#endif
-			/* Did the host decide to stop early? */
-			if (bh->outreq->actual != bh->outreq->length) {
-				common->short_packet_received = 1;
-				break;
-			}
-			continue;
-		}
-
-		/* Wait for something to happen */
-		rc = sleep_thread(common);
-		if (rc)
-			return rc;
-	}
-
-	return -EIO;		/* No default reply */
-}
-
 
 /*-------------------------------------------------------------------------*/
-/* [ADD END] 2011/04/15 KDDI : vender write command */
-/* [CHANGE END] 2011/05/27 KDDI : [offset]use change */
-#endif
+
 static int do_synchronize_cache(struct fsg_common *common)
 {
 	struct fsg_lun	*curlun = common->curlun;
@@ -1434,28 +1195,12 @@ static int do_inquiry(struct fsg_common *common, struct fsg_buffhd *bh)
 	buf[1] = curlun->removable ? 0x80 : 0;
 	buf[2] = 2;		/* ANSI SCSI level 2 */
 	buf[3] = 2;		/* SCSI-2 INQUIRY data format */
-#ifdef CONFIG_LISMO
-/* [CHANGE START] 2011/04/15 KDDI : return data size */
-	buf[4] = 31 + INQUIRY_VENDOR_SPECIFIC_SIZE;		/* Additional length */
-/* [CHANGE END] 2011/04/15 KDDI : return data size */
-	buf[5] = 0;		/* No special options */
-	buf[6] = 0;
-	buf[7] = 0;
-	memcpy(buf + 8, common->inquiry_string, sizeof common->inquiry_string);
-/* [CHANGE START] 2011/05/26 KDDI : return data set */
-	memcpy(buf + 8 + sizeof common->inquiry_string - 1,
-		   curlun->inquiry_vendor, INQUIRY_VENDOR_SPECIFIC_SIZE);
-	return 36 + INQUIRY_VENDOR_SPECIFIC_SIZE;
-/* [CHANGE END] 2011/05/26 KDDI : return data set */
-#else
-
 	buf[4] = 31;		/* Additional length */
 	buf[5] = 0;		/* No special options */
 	buf[6] = 0;
 	buf[7] = 0;
 	memcpy(buf + 8, common->inquiry_string, sizeof common->inquiry_string);
 	return 36;
-#endif
 }
 
 
@@ -1675,43 +1420,55 @@ static int do_start_stop(struct fsg_common *common)
 	} else if (!curlun->removable) {
 		curlun->sense_data = SS_INVALID_COMMAND;
 		return -EINVAL;
-	}
-
-	loej = common->cmnd[4] & 0x02;
-	start = common->cmnd[4] & 0x01;
-
-	/* eject code from file_storage.c:do_start_stop() */
-
-	if ((common->cmnd[1] & ~0x01) != 0 ||	  /* Mask away Immed */
-		(common->cmnd[4] & ~0x03) != 0) { /* Mask LoEj, Start */
+	} else if ((common->cmnd[1] & ~0x01) != 0 || /* Mask away Immed */
+		   (common->cmnd[4] & ~0x03) != 0) { /* Mask LoEj, Start */
 		curlun->sense_data = SS_INVALID_FIELD_IN_CDB;
 		return -EINVAL;
 	}
 
-	if (!start) {
-		/* Are we allowed to unload the media? */
-		if (curlun->prevent_medium_removal) {
-			LDBG(curlun, "unload attempt prevented\n");
-			curlun->sense_data = SS_MEDIUM_REMOVAL_PREVENTED;
-			return -EINVAL;
-		}
-		if (loej) {	/* Simulate an unload/eject */
-			up_read(&common->filesem);
-			down_write(&common->filesem);
-			fsg_lun_close(curlun);
-			up_write(&common->filesem);
-			down_read(&common->filesem);
-		}
-	} else {
+	loej  = common->cmnd[4] & 0x02;
+	start = common->cmnd[4] & 0x01;
 
-		/* Our emulation doesn't support mounting; the medium is
-		 * available for use as soon as it is loaded. */
+	/* Our emulation doesn't support mounting; the medium is
+	 * available for use as soon as it is loaded. */
+	if (start) {
 		if (!fsg_lun_is_open(curlun)) {
 			curlun->sense_data = SS_MEDIUM_NOT_PRESENT;
 			return -EINVAL;
 		}
+		return 0;
 	}
-	return 0;
+
+	/* Are we allowed to unload the media? */
+	if (curlun->prevent_medium_removal) {
+		LDBG(curlun, "unload attempt prevented\n");
+		curlun->sense_data = SS_MEDIUM_REMOVAL_PREVENTED;
+		return -EINVAL;
+	}
+
+	if (!loej)
+		return 0;
+
+	/* Simulate an unload/eject */
+	if (common->ops && common->ops->pre_eject) {
+		int r = common->ops->pre_eject(common, curlun,
+					       curlun - common->luns);
+		if (unlikely(r < 0))
+			return r;
+		else if (r)
+			return 0;
+	}
+
+	up_read(&common->filesem);
+	down_write(&common->filesem);
+	fsg_lun_close(curlun);
+	up_write(&common->filesem);
+	down_read(&common->filesem);
+
+	return common->ops && common->ops->post_eject
+		? min(0, common->ops->post_eject(common, curlun,
+						 curlun - common->luns))
+		: 0;
 }
 
 
@@ -1941,13 +1698,9 @@ static int finish_reply(struct fsg_common *common)
 				return -EIO;
 			common->next_buffhd_to_fill = bh->next;
 
-		/*
-		 * For Bulk-only, mark the end of the data with a short
-		 * packet.  If we are allowed to stall, halt the bulk-in
-		 * endpoint.  (Note: This violates the Bulk-Only Transport
-		 * specification, which requires us to pad the data if we
-		 * don't halt the endpoint.  Presumably nobody will mind.)
-		 */
+		/* For Bulk-only, if we're allowed to stall then send the
+		 * short packet and halt the bulk-in endpoint.  If we can't
+		 * stall, pad out the remaining data with 0's. */
 		} else if (common->can_stall) {
 			bh->inreq->zero = 1;
 			START_TRANSFER_OR(common, bulk_in, bh->inreq,
@@ -2195,11 +1948,7 @@ static int do_scsi_command(struct fsg_common *common)
 	int			reply = -EINVAL;
 	int			i;
 	static char		unknown[16];
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : for vendor command */
-	struct op_desc	*desc;
-/* [ADD END] 2011/04/15 KDDI : for vendor command */
-#endif
+
 	dump_cdb(common);
 
 	/* Wait for the next buffer to become available for data or status */
@@ -2419,59 +2168,6 @@ static int do_scsi_command(struct fsg_common *common)
 		if (reply == 0)
 			reply = do_write(common);
 		break;
-
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : add case vendor command */
-	case SC_VENDOR_START ... SC_VENDOR_END:
-/* [ADD START] 2011/05/30 KDDI : mutex_lock */
-		mutex_lock(&sysfs_lock);
-/* [ADD END] 2011/05/30 KDDI : mutex_lock */
-		desc = common->luns[common->lun].op_desc[common->cmnd[0] - SC_VENDOR_START];
-		if (!desc)
-			goto cmd_error;
-
-		common->data_size_from_cmnd = get_unaligned_be32(&common->cmnd[6]);
-		if (common->data_size_from_cmnd == 0)
-				goto cmd_error;
-		if (~common->cmnd[1] & 0x10) {
-			if ((reply = check_command(common, 10, DATA_DIR_FROM_HOST,
-					(1<<1) | (0xf<<2) | (0xf<<6),
-					0, "VENDOR WRITE BUFFER")) == 0) {
-				reply = do_write_buffer(common);
-				desc->update = jiffies;
-				schedule_work(&desc->work);
-			} else
-				goto cmd_error;
-/* [ADD START] 2011/05/30 KDDI : mutex_unlock */
-				mutex_unlock(&sysfs_lock);
-/* [ADD END] 2011/05/30 KDDI : mutex_unlock */
-			break;
-		} else {
-			if ((reply = check_command(common, 10, DATA_DIR_TO_HOST,
-					(1<<1) | (0xf<<2) | (0xf<<6),
-					0, "VENDOR READ BUFFER")) == 0)
-				reply = do_read_buffer(common);
-			else
-				goto cmd_error;
-/* [ADD START] 2011/05/30 KDDI : mutex_unlock */
-				mutex_unlock(&sysfs_lock);
-/* [ADD END] 2011/05/30 KDDI : mutex_unlock */
-			break;
-		}
-		cmd_error:
-/* [ADD START] 2011/05/30 KDDI : mutex_unlock */
-			mutex_unlock(&sysfs_lock);
-/* [ADD END] 2011/05/30 KDDI : mutex_unlock */
-			common->data_size_from_cmnd = 0;
-			sprintf(unknown, "Unknown x%02x", common->cmnd[0]);
-			if ((reply = check_command(common, common->cmnd_size,
-					DATA_DIR_UNKNOWN, 0x3ff, 0, unknown)) == 0) { /* 2011/04/27 KDDI : ff->3ff(10Byte support) */
-				common->curlun->sense_data = SS_INVALID_COMMAND;
-				reply = -EINVAL;
-			}
-		break;
-/* [ADD END] 2011/04/15 KDDI : add case vendor command */
-#endif
 
 	/* Some mandatory commands that we recognize but don't implement.
 	 * They don't mean much in this setting.  It's left as an exercise
@@ -2740,7 +2436,7 @@ static int fsg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	struct fsg_dev *fsg = fsg_from_func(f);
 	fsg->common->new_fsg = fsg;
 	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
-	return 0;
+	return USB_GADGET_DELAYED_STATUS;
 }
 
 static void fsg_disable(struct usb_function *f)
@@ -2868,11 +2564,15 @@ static void handle_exception(struct fsg_common *common)
 
 	case FSG_STATE_CONFIG_CHANGE:
 		do_set_interface(common, common->new_fsg);
+		if (common->new_fsg)
+			usb_composite_setup_continue(common->cdev);
+		switch_set_state(&common->sdev, common->running);
 		break;
 
 	case FSG_STATE_EXIT:
 	case FSG_STATE_TERMINATED:
 		do_set_interface(common, NULL);		/* Free resources */
+		switch_set_state(&common->sdev, common->running);
 		spin_lock_irq(&common->lock);
 		common->state = FSG_STATE_TERMINATED;	/* Stop the thread */
 		spin_unlock_irq(&common->lock);
@@ -2929,9 +2629,7 @@ static int fsg_main_thread(void *common_)
 		if (!exception_in_progress(common))
 			common->state = FSG_STATE_DATA_PHASE;
 		spin_unlock_irq(&common->lock);
-#ifdef CONFIG_LISMO
-printk("%s ScsiRcvCcommand[0]:%02x [1]:%02x\n", __func__,common->cmnd[0],common->cmnd[1]);
-#endif
+
 		if (do_scsi_command(common) || finish_reply(common))
 			continue;
 
@@ -2953,7 +2651,8 @@ printk("%s ScsiRcvCcommand[0]:%02x [1]:%02x\n", __func__,common->cmnd[0],common-
 	common->thread_task = NULL;
 	spin_unlock_irq(&common->lock);
 
-	if (!common->thread_exits || common->thread_exits(common) < 0) {
+	if (!common->ops || !common->ops->thread_exits
+	 || common->ops->thread_exits(common) < 0) {
 		struct fsg_lun *curlun = common->luns;
 		unsigned i = common->nluns;
 
@@ -2977,466 +2676,10 @@ printk("%s ScsiRcvCcommand[0]:%02x [1]:%02x\n", __func__,common->cmnd[0],common-
 
 /* Write permission is checked per LUN in store_*() functions. */
 static DEVICE_ATTR(ro, 0644, fsg_show_ro, fsg_store_ro);
+static DEVICE_ATTR(nofua, 0644, fsg_show_nofua, fsg_store_nofua);
 static DEVICE_ATTR(file, 0644, fsg_show_file, fsg_store_file);
-#ifdef CONFIG_LISMO
 
-/* [ADD START] 2011/04/15 KDDI : functions to handle vendor command */
-/*************************** VENDOR SCSI OPCODE ***************************/
 
-/* setting notify change buffer */
-static void buffer_notify_sysfs(struct work_struct *work)
-{
-	struct op_desc	*desc;
-	//printk("%s\n", __func__);
-	desc = container_of(work, struct op_desc, work);
-	sysfs_notify_dirent(desc->value_sd);
-}
-
-/* check vendor command code */
-static int vendor_cmd_is_valid(unsigned cmd)
-{
-	if(cmd < SC_VENDOR_START)
-		return 0;
-	if(cmd > SC_VENDOR_END)
-		return 0;
-	return 1;
-}
-
-/* read vendor command buffer */
-static ssize_t
-vendor_cmd_read_buffer(struct file *f, struct kobject *kobj, struct bin_attribute *attr,
-		char *buf, loff_t off, size_t count)
-{
-	ssize_t	status;
-	struct op_desc	*desc = attr->private;
-
-	//printk("%s: buf=%p off=%lx count=%x\n", __func__, buf, (unsigned long)off, count);
-	mutex_lock(&sysfs_lock);
-
-	if (!test_bit(FLAG_EXPORT, &desc->flags))
-		status = -EIO;
-	else {
-		size_t srclen, n;
-		void *src;
-		size_t nleft = count;
-		src = desc->buffer;
-		srclen = desc->len;
-
-		if (off < srclen) {
-			n = min(nleft, srclen - (size_t) off);
-			memcpy(buf, src + off, n);
-			nleft -= n;
-			buf += n;
-			off = 0;
-		} else {
-			off -= srclen;
-		}
-		status = count - nleft;
-	}
-
-	mutex_unlock(&sysfs_lock);
-	return status;
-}
-
-/* write vendor commn buffer */
-static ssize_t
-vendor_cmd_write_buffer(struct file *f, struct kobject *kobj, struct bin_attribute *attr,
-		char *buf, loff_t off, size_t count)
-{
-	ssize_t	status;
-	struct op_desc	*desc = attr->private;
-
-	//printk("%s: buf=%p off=%lx count=%x\n", __func__, buf, (unsigned long)off, count);
-	mutex_lock(&sysfs_lock);
-
-	if (!test_bit(FLAG_EXPORT, &desc->flags))
-		status = -EIO;
-	else {
-		size_t dstlen, n;
-		size_t nleft = count;
-		void *dst;
-
-		dst = desc->buffer;
-		dstlen = desc->len;
-
-		if (off < dstlen) {
-			n = min(nleft, dstlen - (size_t) off);
-			memcpy(dst + off, buf, n);
-			nleft -= n;
-			buf += n;
-			off = 0;
-		} else {
-			off -= dstlen;
-		}
-		status = count - nleft;
-	}
-
-	desc->update = jiffies;
-	schedule_work(&desc->work);
-
-	mutex_unlock(&sysfs_lock);
-	return status;
-}
-
-/* memory mapping vendor commn buffer */
-static int
-vendor_cmd_mmap_buffer(struct file *f, struct kobject *kobj, struct bin_attribute *attr,
-		struct vm_area_struct *vma)
-{
-	int rc = -EINVAL;
-	unsigned long pgoff, delta;
-	ssize_t size = vma->vm_end - vma->vm_start;
-	struct op_desc	*desc = attr->private;
-
-	printk("%s\n", __func__);
-	/* [ADD START] 2011/05/30 KDDI : mutex_lock */
-	mutex_lock(&sysfs_lock);
-	/* [ADD END] 2011/05/30 KDDI : mutex_lock */
-
-	if (vma->vm_pgoff != 0) {
-		printk("mmap failed: page offset %lx\n", vma->vm_pgoff);
-		goto done;
-	}
-
-	pgoff = __pa(desc->buffer);
-	delta = PAGE_ALIGN(pgoff) - pgoff;
-	printk("%s size=%x delta=%lx pgoff=%lx\n", __func__, size, delta, pgoff);
-
-	if (size + delta > desc->len) {
-		printk("mmap failed: size %d\n", size);
-		goto done;
-	}
-
-	pgoff += delta;
-	vma->vm_flags |= VM_RESERVED;
-
-	rc = io_remap_pfn_range(vma, vma->vm_start, pgoff >> PAGE_SHIFT,
-			size, vma->vm_page_prot);
-
-	if (rc < 0)
-		printk("mmap failed: remap error %d\n", rc);
-done:
-	/* [ADD START] 2011/05/30 KDDI : mutex_unlock */
-	mutex_unlock(&sysfs_lock);
-	/* [ADD END] 2011/05/30 KDDI : mutex_unlock */
-	return rc;
-}
-
-/* set 'size'file */
-static ssize_t vendor_size_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct op_desc	*desc = dev_to_desc(dev);
-	ssize_t		status;
-
-	mutex_lock(&sysfs_lock);
-
-	if (!test_bit(FLAG_EXPORT, &desc->flags))
-		status = -EIO;
-	else
-		status = sprintf(buf, "%d\n", desc->len);
-
-	mutex_unlock(&sysfs_lock);
-	return status;
-}
-
-/* when update 'size'file */
-static ssize_t vendor_size_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	long len;
-	char *buffer;
-	struct op_desc	*desc = dev_to_desc(dev);
-	ssize_t		status;
-
-	mutex_lock(&sysfs_lock);
-
-	if (!test_bit(FLAG_EXPORT, &desc->flags))
-		status = -EIO;
-	else {
-		struct bin_attribute *dev_bin_attr_buffer = &desc->dev_bin_attr_buffer;
-		status = strict_strtol(buf, 0, &len);
-		if (status < 0) {
-			status = -EINVAL;
-			goto done;
-		}
-		if (desc->len == len) {
-			status = 0;
-			goto done;
-		}
-		buffer = kzalloc(len, GFP_KERNEL);
-		if (!buffer) {
-			status = -ENOMEM;
-			goto done;
-		}
-		desc->len = len;
-		kfree(desc->buffer);
-		desc->buffer = buffer;
-		device_remove_bin_file(&desc->dev, dev_bin_attr_buffer);
-		dev_bin_attr_buffer->size = len;
-		status = device_create_bin_file(&desc->dev, dev_bin_attr_buffer);
-	}
-
-done:
-	mutex_unlock(&sysfs_lock);
-	return status ? : size;
-}
-/* define 'size'file */
-static DEVICE_ATTR(size, 0606, vendor_size_show, vendor_size_store); /* 2011/04/19 KDDI : permission change 0600->0606 */
-
-/* set 'update'file */
-static ssize_t vendor_update_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct op_desc	*desc = dev_to_desc(dev);
-	ssize_t		status;
-
-	mutex_lock(&sysfs_lock);
-
-	if (!test_bit(FLAG_EXPORT, &desc->flags))
-		status = -EIO;
-	else
-		status = sprintf(buf, "%lu\n", desc->update);
-
-	mutex_unlock(&sysfs_lock);
-	return status;
-}
-/* define 'update'file */
-static DEVICE_ATTR(update, 0404, vendor_update_show, 0); /* 2011/04/19 KDDI : permission change 0400->0404 */
-
-/* vendor command create */
-static int vendor_cmd_export(struct device *dev, unsigned cmd)
-{
-	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
-	struct op_desc	*desc;
-	int		status = -EINVAL;
-	struct bin_attribute *dev_bin_attr_buffer;
-
-	if (!vendor_cmd_is_valid(cmd))
-		goto done;
-
-	desc = curlun->op_desc[cmd-SC_VENDOR_START];
-	if (!desc) {
-		desc = kzalloc(sizeof(struct op_desc), GFP_KERNEL);
-		if (!desc) {
-			status = -ENOMEM;
-			goto done;
-		}
-		curlun->op_desc[cmd-SC_VENDOR_START] = desc;
-	}
-
-	status = 0;
-	if (test_bit(FLAG_EXPORT, &desc->flags)) {
-		goto done;
-	}
-
-	desc->buffer = kzalloc(2048, GFP_KERNEL);
-	if (!desc->buffer) {
-		status = -ENOMEM;
-		goto done;
-	}
-	desc->len = 2048;
-
-	dev_bin_attr_buffer = &desc->dev_bin_attr_buffer;
-	desc->dev.release = op_release;
-	desc->dev.parent = &curlun->dev;
-	dev_set_drvdata(&desc->dev, curlun);
-	dev_set_name(&desc->dev, "opcode-%02x", cmd);
-	status = device_register(&desc->dev);
-	if (status != 0) {
-		printk(KERN_INFO"failed to register opcode%d: %d\n", cmd, status);
-		goto done;
-	}
-
-	dev_bin_attr_buffer->attr.name = "buffer";
-	dev_bin_attr_buffer->attr.mode = 0606; /* 2011/04/19 KDDI : permission change 0600->0606 */
-	dev_bin_attr_buffer->read = vendor_cmd_read_buffer;
-	dev_bin_attr_buffer->write = vendor_cmd_write_buffer;
-	dev_bin_attr_buffer->mmap = vendor_cmd_mmap_buffer;
-	dev_bin_attr_buffer->size = 2048;
-	dev_bin_attr_buffer->private = desc;
-	status = device_create_bin_file(&desc->dev, dev_bin_attr_buffer);
-
-	if (status != 0) {
-		device_remove_bin_file(&desc->dev, dev_bin_attr_buffer);
-		kfree(desc->buffer);
-		desc->buffer = 0;
-		desc->len = 0;
-		device_unregister(&desc->dev);
-		goto done;
-	}
-
-	status = device_create_file(&desc->dev, &dev_attr_size);
-	if (status == 0)
-		status = device_create_file(&desc->dev, &dev_attr_update);
-	if (status != 0) {
-		printk(KERN_INFO"device_create_file failed: %d\n", status);
-		device_remove_file(&desc->dev, &dev_attr_update);
-		device_remove_file(&desc->dev, &dev_attr_size);
-		device_remove_bin_file(&desc->dev, dev_bin_attr_buffer);
-		kfree(desc->buffer);
-		desc->buffer = 0;
-		desc->len = 0;
-		device_unregister(&desc->dev);
-		goto done;
-	}
-
-	desc->value_sd = sysfs_get_dirent(desc->dev.kobj.sd, NULL, "update");
-	INIT_WORK(&desc->work, buffer_notify_sysfs);
-
-	if (status == 0)
-		set_bit(FLAG_EXPORT, &desc->flags);
-
-/* [ADD START] 2011/05/26 KDDI : init 'update' */
-	desc->update = 0;
-/* [ADD END] 2011/05/26 KDDI : init 'update' */
-
-
-done:
-	if (status)
-		pr_debug("%s: opcode%d status %d\n", __func__, cmd, status);
-	return status;
-}
-
-/* vendor command delete */
-static void vendor_cmd_unexport(struct device *dev, unsigned cmd)
-{
-	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
-	struct op_desc *desc;
-	int status = -EINVAL;
-
-	if (!vendor_cmd_is_valid(cmd))
-		goto done;
-
-	desc = curlun->op_desc[cmd-SC_VENDOR_START];
-	if (!desc) {
-		status = -ENODEV;
-		goto done;
-	}
-
-	if (test_bit(FLAG_EXPORT, &desc->flags)) {
-		struct bin_attribute *dev_bin_attr_buffer = &desc->dev_bin_attr_buffer;
-		clear_bit(FLAG_EXPORT, &desc->flags);
-		cancel_work_sync(&desc->work);
-		device_remove_file(&desc->dev, &dev_attr_update);
-		device_remove_file(&desc->dev, &dev_attr_size);
-		device_remove_bin_file(&desc->dev, dev_bin_attr_buffer);
-		kfree(desc->buffer);
-		desc->buffer = 0;
-		desc->len = 0;
-		status = 0;
-		device_unregister(&desc->dev);
-		kfree(desc);
-		curlun->op_desc[cmd-SC_VENDOR_START] = 0;
-	} else
-		status = -ENODEV;
-
-done:
-	if (status)
-		pr_debug("%s: opcode%d status %d\n", __func__, cmd, status);
-}
-
-
-/* when 'export'file update */
-static ssize_t vendor_export_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t len)
-{
-	long cmd;
-	int status;
-
-	status = strict_strtol(buf, 0, &cmd);
-	if (status < 0)
-		goto done;
-
-	status = -EINVAL;
-
-	if (!vendor_cmd_is_valid(cmd))
-		goto done;
-
-	mutex_lock(&sysfs_lock);
-
-	status = vendor_cmd_export(dev, cmd);
-	if (status < 0)
-		vendor_cmd_unexport(dev, cmd);
-
-	mutex_unlock(&sysfs_lock);
-done:
-	if (status)
-		pr_debug(KERN_INFO"%s: status %d\n", __func__, status);
-	return status ? : len;
-}
-
-/* define 'export'file */
-static DEVICE_ATTR(export, 0202, 0, vendor_export_store); /* 2011/04/19 KDDI : permission change 0200->0202 */
-
-/* when 'unexport'file update */
-static ssize_t vendor_unexport_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t len)
-{
-	long cmd;
-	int status;
-
-	status = strict_strtol(buf, 0, &cmd);
-	if (status < 0)
-		goto done;
-
-	status = -EINVAL;
-
-	if (!vendor_cmd_is_valid(cmd))
-		goto done;
-
-	mutex_lock(&sysfs_lock);
-
-	status = 0;
-	vendor_cmd_unexport(dev, cmd);
-
-	mutex_unlock(&sysfs_lock);
-done:
-	if (status)
-		pr_debug(KERN_INFO"%s: status %d\n", __func__, status);
-	return status ? : len;
-}
-/* define 'unexport'file */
-static DEVICE_ATTR(unexport, 0202, 0, vendor_unexport_store); /* 2011/04/19 KDDI : permission change 0200->0202 */
-
-/* set 'inquiry'file */
-static ssize_t vendor_inquiry_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct fsg_lun *curlun = fsg_lun_from_dev(dev);
-	ssize_t status;
-
-	mutex_lock(&sysfs_lock);
-	status = sprintf(buf, "\"%s\"\n", curlun->inquiry_vendor);
-
-	mutex_unlock(&sysfs_lock);
-	return status;
-}
-
-/* get 'inquiry'file */
-static ssize_t vendor_inquiry_store(struct device *dev,
-		struct device_attribute *attr, const char *buf, size_t len)
-{
-	struct fsg_lun *curlun = fsg_lun_from_dev(dev);
-
-	mutex_lock(&sysfs_lock);
-	strncpy(curlun->inquiry_vendor, buf,
-					sizeof curlun->inquiry_vendor);
-	curlun->inquiry_vendor[sizeof curlun->inquiry_vendor - 1] = '\0';
-
-	mutex_unlock(&sysfs_lock);
-	return 0;
-}
-
-/* define 'inquiry'file */
-static DEVICE_ATTR(inquiry, 0606, vendor_inquiry_show, vendor_inquiry_store); /* 2011/04/19 KDDI : permission change 0600->0606 */
-
-static void op_release(struct device *dev)
-{
-}
-/* [ADD END] 2011/04/15 KDDI : functions to handle vendor command */
-
-#endif
 /****************************** FSG COMMON ******************************/
 
 static void fsg_common_release(struct kref *ref);
@@ -3456,6 +2699,19 @@ static inline void fsg_common_put(struct fsg_common *common)
 	kref_put(&common->ref, fsg_common_release);
 }
 
+/*
+ * UMS switch functions for Android.
+ */
+static ssize_t print_switch_name(struct switch_dev *sdev, char *buf)
+{
+	return sprintf(buf, "%s\n", FUNCTION_NAME);
+}
+
+static ssize_t print_switch_state(struct switch_dev *sdev, char *buf)
+{
+	struct fsg_common *common = container_of(sdev, struct fsg_common, sdev);
+	return sprintf(buf, "%s\n", (common->running ? "online" : "offline"));
+}
 
 static struct fsg_common *fsg_common_init(struct fsg_common *common,
 					  struct usb_composite_dev *cdev,
@@ -3465,7 +2721,7 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	struct fsg_buffhd *bh;
 	struct fsg_lun *curlun;
 	struct fsg_lun_config *lcfg;
-	int nluns, i, rc = 0;
+	int nluns, i, rc;
 	char *pathbuf;
 
 	/* Find out how many LUNs there should be */
@@ -3486,11 +2742,24 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		common->free_storage_on_release = 0;
 	}
 
+	common->ops = cfg->ops;
 	common->private_data = cfg->private_data;
 
 	common->gadget = gadget;
 	common->ep0 = gadget->ep0;
 	common->ep0req = cdev->req;
+
+	/*
+	 * Register UMS switch for Android.
+	 */
+	common->sdev.name = FUNCTION_NAME;
+	common->sdev.print_name = print_switch_name;
+	common->sdev.print_state = print_switch_state;
+	common->sdev.state = 0;
+	rc = switch_dev_register(&common->sdev);
+
+	if (rc < 0)
+		DBG(common, "Error registering switch!\n");
 
 	/* Maybe allocate device-global string IDs, and patch descriptors */
 	if (fsg_strings[FSG_STRING_INTERFACE].id == 0) {
@@ -3517,13 +2786,7 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		curlun->ro = lcfg->cdrom || lcfg->ro;
 		curlun->removable = lcfg->removable;
 		curlun->dev.release = fsg_lun_release;
-
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-		/* use "usb_mass_storage" platform device as parent */
-		curlun->dev.parent = &cfg->pdev->dev;
-#else
 		curlun->dev.parent = &gadget->dev;
-#endif
 		/* curlun->dev.driver = &fsg_driver.driver; XXX */
 		dev_set_drvdata(&curlun->dev, &common->filesem);
 		dev_set_name(&curlun->dev,
@@ -3545,23 +2808,10 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 		rc = device_create_file(&curlun->dev, &dev_attr_file);
 		if (rc)
 			goto error_luns;
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : create file for vendor command */
-		rc = device_create_file(&curlun->dev, &dev_attr_export);
+		rc = device_create_file(&curlun->dev, &dev_attr_nofua);
 		if (rc)
 			goto error_luns;
-		rc = device_create_file(&curlun->dev, &dev_attr_unexport);
-		if (rc)
-			goto error_luns;
-		rc = device_create_file(&curlun->dev, &dev_attr_inquiry);
-		if (rc)
-			goto error_luns;
-/* [CHANGE START] 2011/05/26 KDDI : initital inquiry response */
-		memset(curlun->inquiry_vendor, 0, sizeof curlun->inquiry_vendor);
-		strcpy(curlun->inquiry_vendor, INQUIRY_VENDOR_INIT);
-/* [CHANGE END] 2011/05/26 KDDI : initital inquiry response */
-/* [ADD END] 2011/04/15 KDDI : create file for vendor command */
-#endif
+
 		if (lcfg->filename) {
 			rc = fsg_lun_open(curlun, lcfg->filename);
 			if (rc)
@@ -3629,7 +2879,6 @@ buffhds_first_it:
 
 
 	/* Tell the thread to start working */
-	common->thread_exits = cfg->thread_exits;
 	common->thread_task =
 		kthread_create(fsg_main_thread, common,
 			       OR(cfg->thread_name, "file-storage"));
@@ -3647,19 +2896,19 @@ buffhds_first_it:
 	INFO(common, "Number of LUNs=%d\n", common->nluns);
 
 	pathbuf = kmalloc(PATH_MAX, GFP_KERNEL);
-		for (i = 0, nluns = common->nluns, curlun = common->luns;
-		     i < nluns;
-		     ++curlun, ++i) {
-			char *p = "(no medium)";
-			if (fsg_lun_is_open(curlun)) {
-				p = "(error)";
-				if (pathbuf) {
-					p = d_path(&curlun->filp->f_path,
-						   pathbuf, PATH_MAX);
-					if (IS_ERR(p))
-						p = "(error)";
-				}
+	for (i = 0, nluns = common->nluns, curlun = common->luns;
+	     i < nluns;
+	     ++curlun, ++i) {
+		char *p = "(no medium)";
+		if (fsg_lun_is_open(curlun)) {
+			p = "(error)";
+			if (pathbuf) {
+				p = d_path(&curlun->filp->f_path,
+					   pathbuf, PATH_MAX);
+				if (IS_ERR(p))
+					p = "(error)";
 			}
+		}
 		LINFO(curlun, "LUN: %s%s%sfile: %s\n",
 		      curlun->removable ? "removable " : "",
 		      curlun->ro ? "read only " : "",
@@ -3678,6 +2927,7 @@ buffhds_first_it:
 error_luns:
 	common->nluns = i + 1;
 error_release:
+	switch_dev_unregister(&common->sdev);
 	common->state = FSG_STATE_TERMINATED;	/* The thread is dead */
 	/* Call fsg_common_release() directly, ref might be not
 	 * initialised */
@@ -3702,29 +2952,12 @@ static void fsg_common_release(struct kref *ref)
 	if (likely(common->luns)) {
 		struct fsg_lun *lun = common->luns;
 		unsigned i = common->nluns;
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : delete file for vendor command */
-		unsigned j;
-/* [ADD END] 2011/04/15 KDDI : delete file for vendor command */
-#endif
+
 		/* In error recovery common->nluns may be zero. */
 		for (; i; --i, ++lun) {
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : delete file for vendor command */
-			for (j = SC_VENDOR_START; j < SC_VENDOR_END + 1; j++) {
-				vendor_cmd_unexport(&lun->dev, j);
-			}
-/* [ADD END] 2011/04/15 KDDI : delete file for vendor command */
-#endif
+			device_remove_file(&lun->dev, &dev_attr_nofua);
 			device_remove_file(&lun->dev, &dev_attr_ro);
 			device_remove_file(&lun->dev, &dev_attr_file);
-#ifdef CONFIG_LISMO
-/* [ADD START] 2011/04/15 KDDI : delete file for vendor command */
-			device_remove_file(&lun->dev, &dev_attr_export);
-			device_remove_file(&lun->dev, &dev_attr_unexport);
-			device_remove_file(&lun->dev, &dev_attr_inquiry);
-/* [ADD END] 2011/04/15 KDDI : delete file for vendor command */
-#endif
 			fsg_lun_close(lun);
 			device_unregister(&lun->dev);
 		}
@@ -3747,6 +2980,7 @@ static void fsg_common_release(struct kref *ref)
 
 /*-------------------------------------------------------------------------*/
 
+
 static void fsg_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct fsg_dev		*fsg = fsg_from_func(f);
@@ -3760,6 +2994,7 @@ static void fsg_unbind(struct usb_configuration *c, struct usb_function *f)
 		wait_event(common->fsg_wait, common->fsg != fsg);
 	}
 
+	switch_dev_unregister(&common->sdev);
 	fsg_common_put(common);
 	usb_free_descriptors(fsg->function.descriptors);
 	usb_free_descriptors(fsg->function.hs_descriptors);
@@ -3829,9 +3064,9 @@ static struct usb_gadget_strings *fsg_strings_array[] = {
 	NULL,
 };
 
-static int fsg_add(struct usb_composite_dev *cdev,
-		   struct usb_configuration *c,
-		   struct fsg_common *common)
+static int fsg_bind_config(struct usb_composite_dev *cdev,
+			   struct usb_configuration *c,
+			   struct fsg_common *common)
 {
 	struct fsg_dev *fsg;
 	int rc;
@@ -3840,11 +3075,7 @@ static int fsg_add(struct usb_composite_dev *cdev,
 	if (unlikely(!fsg))
 		return -ENOMEM;
 
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-	fsg->function.name        = FUNCTION_NAME;
-#else
-	fsg->function.name        = FSG_DRIVER_DESC;
-#endif
+	fsg->function.name        = "mass_storage";
 	fsg->function.strings     = fsg_strings_array;
 	fsg->function.bind        = fsg_bind;
 	fsg->function.unbind      = fsg_unbind;
@@ -3853,6 +3084,8 @@ static int fsg_add(struct usb_composite_dev *cdev,
 	fsg->function.disable     = fsg_disable;
 
 	fsg->common               = common;
+	fsg->common->cdev         = cdev;
+
 	/* Our caller holds a reference to common structure so we
 	 * don't have to be worry about it being freed until we return
 	 * from this function.  So instead of incrementing counter now
@@ -3867,6 +3100,13 @@ static int fsg_add(struct usb_composite_dev *cdev,
 	return rc;
 }
 
+static inline int __deprecated __maybe_unused
+fsg_add(struct usb_composite_dev *cdev,
+	struct usb_configuration *c,
+	struct fsg_common *common)
+{
+	return fsg_bind_config(cdev, c, common);
+}
 
 
 /************************* Module parameters *************************/
@@ -3876,11 +3116,15 @@ struct fsg_module_parameters {
 	char		*file[FSG_MAX_LUNS];
 	int		ro[FSG_MAX_LUNS];
 	int		removable[FSG_MAX_LUNS];
+	int		cdrom[FSG_MAX_LUNS];
+	int		nofua[FSG_MAX_LUNS];
 
 	unsigned int	file_count, ro_count, removable_count, cdrom_count;
+	unsigned int	nofua_count;
 	unsigned int	luns;	/* nluns */
 	int		stall;	/* can_stall */
 };
+
 
 #define _FSG_MODULE_PARAM_ARRAY(prefix, params, name, type, desc)	\
 	module_param_array_named(prefix ## name, params.name, type,	\
@@ -3902,6 +3146,8 @@ struct fsg_module_parameters {
 				"true to simulate removable media");	\
 	_FSG_MODULE_PARAM_ARRAY(prefix, params, cdrom, bool,		\
 				"true to simulate CD-ROM instead of disk"); \
+	_FSG_MODULE_PARAM_ARRAY(prefix, params, nofua, bool,		\
+				"true to ignore SCSI WRITE(10,12) FUA bit"); \
 	_FSG_MODULE_PARAM(prefix, params, luns, uint,			\
 			  "number of LUNs");				\
 	_FSG_MODULE_PARAM(prefix, params, stall, bool,			\
@@ -3921,6 +3167,7 @@ fsg_config_from_params(struct fsg_config *cfg,
 		    (unsigned)FSG_MAX_LUNS);
 	for (i = 0, lun = cfg->luns; i < cfg->nluns; ++i, ++lun) {
 		lun->ro = !!params->ro[i];
+		lun->cdrom = !!params->cdrom[i];
 		lun->removable = /* Removable by default */
 			params->removable_count <= i || params->removable[i];
 		lun->filename =
@@ -3936,8 +3183,8 @@ fsg_config_from_params(struct fsg_config *cfg,
 	cfg->product_name = 0;
 	cfg->release = 0xffff;
 
-	cfg->thread_exits = 0;
-	cfg->private_data = 0;
+	cfg->ops = NULL;
+	cfg->private_data = NULL;
 
 	/* Finalise */
 	cfg->can_stall = params->stall;
@@ -3957,64 +3204,4 @@ fsg_common_from_params(struct fsg_common *common,
 	fsg_config_from_params(&cfg, params);
 	return fsg_common_init(common, cdev, &cfg);
 }
-
-#ifdef CONFIG_USB_ANDROID_MASS_STORAGE
-
-static struct fsg_config fsg_cfg;
-
-static int fsg_probe(struct platform_device *pdev)
-{
-	struct usb_mass_storage_platform_data *pdata = pdev->dev.platform_data;
-	int i, nluns;
-
-	printk(KERN_INFO "fsg_probe pdev: %p, pdata: %p\n", pdev, pdata);
-	if (!pdata)
-		return -1;
-
-	nluns = pdata->nluns;
-	if (nluns > FSG_MAX_LUNS)
-		nluns = FSG_MAX_LUNS;
-	fsg_cfg.nluns = nluns;
-	for (i = 0; i < nluns; i++)
-		fsg_cfg.luns[i].removable = 1;
-
-	fsg_cfg.vendor_name = pdata->vendor;
-	fsg_cfg.product_name = pdata->product;
-	fsg_cfg.release = pdata->release;
-	fsg_cfg.can_stall = 0;
-	fsg_cfg.pdev = pdev;
-
-	return 0;
-}
-
-static struct platform_driver fsg_platform_driver = {
-	.driver = { .name = FUNCTION_NAME, },
-	.probe = fsg_probe,
-};
-
-int mass_storage_bind_config(struct usb_configuration *c)
-{
-	struct fsg_common *common = fsg_common_init(NULL, c->cdev, &fsg_cfg);
-	if (IS_ERR(common))
-		return -1;
-	return fsg_add(c->cdev, c, common);
-}
-
-static struct android_usb_function mass_storage_function = {
-	.name = FUNCTION_NAME,
-	.bind_config = mass_storage_bind_config,
-};
-
-static int __init init(void)
-{
-	int		rc;
-	printk(KERN_INFO "f_mass_storage init\n");
-	rc = platform_driver_register(&fsg_platform_driver);
-	if (rc != 0)
-		return rc;
-	android_register_function(&mass_storage_function);
-	return 0;
-}module_init(init);
-
-#endif /* CONFIG_USB_ANDROID_MASS_STORAGE */
 
