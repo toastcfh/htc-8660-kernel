@@ -126,12 +126,6 @@
 #define gadget_is_ci13xxx(g)	0
 #endif
 
-#ifdef CONFIG_USB_GADGET_MSM_72K
-#define	gadget_is_msm72k(g)	!strcmp("msm72k_udc", (g)->name)
-#else
-#define	gadget_is_msm72k(g)	0
-#endif
-
 // CONFIG_USB_GADGET_SX2
 // CONFIG_USB_GADGET_AU1X00
 // ...
@@ -206,8 +200,6 @@ static inline int usb_gadget_controller_number(struct usb_gadget *gadget)
 		return 0x25;
 	else if (gadget_is_s3c_hsotg(gadget))
 		return 0x26;
-	else if (gadget_is_msm72k(gadget))
-		return 0x27;
 	return -ENOENT;
 }
 
@@ -230,4 +222,14 @@ static inline bool gadget_supports_altsettings(struct usb_gadget *gadget)
 	return true;
 }
 
+/**
+ * gadget_dma32 - return true if we want buffer aligned on 32 bits (for dma)
+ * @gadget: the gadget in question
+ */
+static inline bool gadget_dma32(struct usb_gadget *gadget)
+{
+	if (gadget_is_musbhdrc(gadget))
+		return true;
+	return false;
+}
 #endif /* __GADGET_CHIPS_H */
