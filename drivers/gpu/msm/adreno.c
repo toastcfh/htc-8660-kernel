@@ -1035,7 +1035,10 @@ static void _yamato_regread(struct kgsl_device *device,
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 				+ (offsetwords << 2));
-	*value = readl(reg);
+	/*ensure this read finishes before the next one.
+	 * i.e. act like normal readl() */
+	*value = __raw_readl(reg);
+	rmb();
 }
 
 void kgsl_yamato_regread(struct kgsl_device *device, unsigned int offsetwords,
@@ -1064,8 +1067,10 @@ static void _yamato_regwrite(struct kgsl_device *device,
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 				+ (offsetwords << 2));
 
-	writel(value, reg);
-
+	/*ensure previous writes post before this one,
+	 * i.e. act like normal writel() */
+	wmb();
+	__raw_writel(value, reg);
 }
 
 void kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,

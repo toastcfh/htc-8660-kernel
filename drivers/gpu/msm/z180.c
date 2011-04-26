@@ -755,7 +755,11 @@ static void _g12_regread_simple(struct kgsl_device *device,
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 			+ (offsetwords << 2));
 
-	*value = readl(reg);
+	/*ensure this read finishes before the next one.
+	 * i.e. act like normal readl() */
+	*value = __raw_readl(reg);
+	rmb();
+
 }
 
 static void _g12_regwrite_simple(struct kgsl_device *device,
@@ -769,7 +773,10 @@ static void _g12_regwrite_simple(struct kgsl_device *device,
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 			+ (offsetwords << 2));
 	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
-	writel(value, reg);
+	/*ensure previous writes post before this one,
+	 * i.e. act like normal writel() */
+	wmb();
+	__raw_writel(value, reg);
 }
 
 
