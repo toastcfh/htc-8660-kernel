@@ -1878,7 +1878,21 @@ void kgsl_unregister_device(struct kgsl_device *device)
 	if (minor == KGSL_DEVICE_MAX)
 		return;
 
+	kgsl_cffdump_close(device->id);
 	kgsl_pwrctrl_uninit_sysfs(device);
+
+	wake_lock_destroy(&device->idle_wakelock);
+	idr_destroy(&device->context_idr);
+
+	if (device->memstore.hostptr)
+		kgsl_sharedmem_free(&device->memstore);
+
+	kgsl_mmu_close(device);
+
+	if (device->work_queue) {
+		destroy_workqueue(device->work_queue);
+		device->work_queue = NULL;
+	}
 
 	device_destroy(kgsl_driver.class,
 		       MKDEV(MAJOR(kgsl_driver.major), minor));
@@ -1931,6 +1945,38 @@ kgsl_register_device(struct kgsl_device *device)
 	/* Generic device initialization */
 	atomic_inc(&kgsl_driver.device_count);
 
+	init_waitqueue_head(&device->wait_queue);
+
+	kgsl_cffdump_open(device->id);
+
+	init_completion(&device->hwaccess_gate);
+	init_completion(&device->suspend_gate);
+
+	ATOMIC_INIT_NOTIFIER_HEAD(&device->ts_notifier_list);
+
+	setup_timer(&device->idle_timer, kgsl_timer, (unsigned long) device);
+	ret = kgsl_create_device_workqueue(device);
+	if (ret)
+		goto err_devlist;
+
+	INIT_WORK(&device->idle_check_ws, kgsl_idle_check);
+
+	INIT_LIST_HEAD(&device->memqueue);
+
+	ret = kgsl_mmu_init(device);
+	if (ret != 0)
+		goto err_dest_work_q;
+
+	ret = kgsl_sharedmem_alloc_coherent(&device->memstore,
+					sizeof(struct kgsl_devmemstore));
+	if (ret != 0)
+		goto err_close_mmu;
+
+	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
+
+	wake_lock_init(&device->idle_wakelock, WAKE_LOCK_IDLE, device->name);
+	idr_init(&device->context_idr);
+
 	/* sysfs and debugfs initalization - failure here is non fatal */
 
 	/* Create a driver entry in the kgsl debugfs directory */
@@ -1946,6 +1992,11 @@ kgsl_register_device(struct kgsl_device *device)
 
 	return 0;
 
+err_close_mmu:
+	kgsl_mmu_close(device);
+err_dest_work_q:
+	destroy_workqueue(device->work_queue);
+	device->work_queue = NULL;
 err_devlist:
 	mutex_lock(&kgsl_driver.devlock);
 	kgsl_driver.devp[minor] = NULL;
@@ -1954,8 +2005,8 @@ err_devlist:
 	return ret;
 }
 
-int kgsl_device_probe(struct kgsl_device *device,
-			irqreturn_t (*dev_isr) (int, void*))
+int kgsl_device_platform_probe(struct kgsl_device *device,
+				irqreturn_t (*dev_isr) (int, void*))
 {
 	int status = -EINVAL;
 	struct kgsl_memregion *regspace = NULL;
@@ -1967,9 +2018,6 @@ int kgsl_device_probe(struct kgsl_device *device,
 	status = kgsl_pwrctrl_init(device);
 	if (status)
 		goto error;
-
-	/* initilization of timestamp wait */
-	init_waitqueue_head(&device->wait_queue);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 					   device->iomemname);
@@ -2019,47 +2067,10 @@ int kgsl_device_probe(struct kgsl_device *device,
 		device->id, regspace->mmio_phys_base,
 		regspace->sizebytes, regspace->mmio_virt_base);
 
-	kgsl_cffdump_open(device->id);
-
-	init_completion(&device->hwaccess_gate);
-	init_completion(&device->suspend_gate);
-
-	ATOMIC_INIT_NOTIFIER_HEAD(&device->ts_notifier_list);
-
-	setup_timer(&device->idle_timer, kgsl_timer, (unsigned long) device);
-	status = kgsl_create_device_workqueue(device);
-	if (status)
-		goto error_free_irq;
-
-	INIT_WORK(&device->idle_check_ws, kgsl_idle_check);
-
-	INIT_LIST_HEAD(&device->memqueue);
-
-	status = kgsl_mmu_init(device);
-	if (status != 0)
-		goto error_dest_work_q;
-
-	status = kgsl_sharedmem_alloc_coherent(&device->memstore,
-					sizeof(struct kgsl_devmemstore));
-	if (status != 0)
-		goto error_close_mmu;
-
-	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
-
 	status = kgsl_register_device(device);
-	if (status)
-		goto error_close_mmu;
+	if (!status)
+		return status;
 
-	wake_lock_init(&device->idle_wakelock, WAKE_LOCK_IDLE, device->name);
-	idr_init(&device->context_idr);
-	return status;
-
-error_close_mmu:
-	kgsl_mmu_close(device);
-error_dest_work_q:
-	destroy_workqueue(device->work_queue);
-	device->work_queue = NULL;
-error_free_irq:
 	free_irq(device->pwrctrl.interrupt_num, NULL);
 	device->pwrctrl.have_irq = 0;
 error_iounmap:
@@ -2073,16 +2084,11 @@ error:
 	return status;
 }
 
-void kgsl_device_remove(struct kgsl_device *device)
+void kgsl_device_platform_remove(struct kgsl_device *device)
 {
 	struct kgsl_memregion *regspace = &device->regspace;
 
 	kgsl_unregister_device(device);
-
-	if (device->memstore.hostptr)
-		kgsl_sharedmem_free(&device->memstore);
-
-	kgsl_mmu_close(device);
 
 	if (regspace->mmio_virt_base != NULL) {
 		iounmap(regspace->mmio_virt_base);
@@ -2091,17 +2097,9 @@ void kgsl_device_remove(struct kgsl_device *device)
 					regspace->sizebytes);
 	}
 	kgsl_pwrctrl_close(device);
-	kgsl_cffdump_close(device->id);
-
-	if (device->work_queue) {
-		destroy_workqueue(device->work_queue);
-		device->work_queue = NULL;
-	}
 
 	pm_runtime_disable(&device->pdev->dev);
 
-	wake_lock_destroy(&device->idle_wakelock);
-	idr_destroy(&device->context_idr);
 }
 
 static int __devinit
