@@ -1929,8 +1929,9 @@ kgsl_register_device(struct kgsl_device *device)
 	if (ret != 0)
 		goto err_dest_work_q;
 
-	ret = kgsl_sharedmem_alloc_coherent(&device->memstore,
-					sizeof(struct kgsl_devmemstore));
+	ret = kgsl_allocate_contig(&device->memstore,
+		sizeof(struct kgsl_devmemstore));
+
 	if (ret != 0)
 		goto err_close_mmu;
 
