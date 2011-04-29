@@ -29,10 +29,8 @@
 #ifndef _MSM_KGSL_H
 #define _MSM_KGSL_H
 
-#ifdef CONFIG_ARCH_MSM8X60
 #define KGSL_VERSION_MAJOR        3
-#define KGSL_VERSION_MINOR        2
-#endif
+#define KGSL_VERSION_MINOR        3
 
 /*context flags */
 #define KGSL_CONTEXT_SAVE_GMEM	1
@@ -484,6 +482,15 @@ struct kgsl_cmdwindow_write {
 
 #define IOCTL_KGSL_CMDWINDOW_WRITE \
 	_IOW(KGSL_IOC_TYPE, 0x2e, struct kgsl_cmdwindow_write)
+
+struct kgsl_gpumem_alloc {
+	unsigned long gpuaddr;
+	size_t size;
+	unsigned int flags;
+};
+
+#define IOCTL_KGSL_GPUMEM_ALLOC \
+	_IOWR(KGSL_IOC_TYPE, 0x2f, struct kgsl_gpumem_alloc)
 
 #ifdef __KERNEL__
 #ifdef CONFIG_MSM_KGSL_DRM
