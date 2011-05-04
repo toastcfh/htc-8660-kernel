@@ -16,15 +16,16 @@
  *
  */
 #include <linux/interrupt.h>
+/*
 #include <linux/err.h>
 #include <linux/kernel.h>
 #include <mach/clk.h>
 #include <mach/dal_axi.h>
 #include <mach/msm_bus.h>
 #include <mach/msm_iomap.h>
+*/
 
 #include "kgsl.h"
-#include "kgsl_log.h"
 
 #define SWITCH_OFF		200
 #define SWITCH_OFF_RESET_TH 40
