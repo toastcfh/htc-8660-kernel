@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2008-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -26,27 +26,31 @@
  * IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
  */
-#ifndef _GSL_CMDSTREAM_H
-#define _GSL_CMDSTREAM_H
+#ifndef __ADRENO_DEBUGFS_H
+#define __ADRENO_DEBUGFS_H
 
-#include <linux/msm_kgsl.h>
+#ifdef CONFIG_DEBUG_FS
 
-struct kgsl_device;
-struct kgsl_device_private;
-struct kgsl_context;
+int kgsl_yamato_debugfs_init(struct kgsl_device *device);
 
-int kgsl_g12_cmdstream_init(struct kgsl_device *device);
+extern int kgsl_pm_regs_enabled;
 
-int kgsl_g12_cmdstream_start(struct kgsl_device *device);
+static inline int kgsl_pmregs_enabled(void)
+{
+	return kgsl_pm_regs_enabled;
+}
 
-void kgsl_g12_cmdstream_close(struct kgsl_device *device);
+#else
+static inline int kgsl_yamato_debugfs_init(struct kgsl_device *device)
+{
+	return 0;
+}
 
-unsigned int kgsl_g12_cmdstream_readtimestamp(struct kgsl_device *device,
-					enum kgsl_timestamp_type unused);
-int kgsl_g12_cmdstream_issueibcmds(struct kgsl_device_private *dev_priv,
-			struct kgsl_context *context,
-			struct kgsl_ibdesc *ibdesc,
-			unsigned int numibs,
-			uint32_t *timestamp,
-			unsigned int ctrl);
-#endif  /* _GSL_CMDSTREAM_H */
+static inline int kgsl_pmregs_enabled(void)
+{
+	/* If debugfs is turned off, then always print registers */
+	return 1;
+}
+#endif
+
+#endif /* __ADRENO_DEBUGFS_H */
