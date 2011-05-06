@@ -586,7 +586,7 @@ static int kgsl_setup_pt(struct kgsl_pagetable *pt)
 	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
 		struct kgsl_device *device = kgsl_driver.devp[i];
 		if (device) {
-			status = device->ftbl.device_setup_pt(device, pt);
+			status = device->ftbl->setup_pt(device, pt);
 			if (status)
 				goto error_pt;
 		}
@@ -596,7 +596,7 @@ error_pt:
 	while (i >= 0) {
 		struct kgsl_device *device = kgsl_driver.devp[i];
 		if (device)
-			device->ftbl.device_cleanup_pt(device, pt);
+			device->ftbl->cleanup_pt(device, pt);
 		i--;
 	}
 	return status;
@@ -608,7 +608,7 @@ static int kgsl_cleanup_pt(struct kgsl_pagetable *pt)
 	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
 		struct kgsl_device *device = kgsl_driver.devp[i];
 		if (device)
-			device->ftbl.device_cleanup_pt(device, pt);
+			device->ftbl->cleanup_pt(device, pt);
 	}
 	return 0;
 }

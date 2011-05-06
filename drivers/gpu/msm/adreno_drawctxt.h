@@ -95,10 +95,10 @@ struct adreno_context {
 	struct gmem_shadow_t context_gmem_shadow;
 };
 
-
-int adreno_drawctxt_create(struct kgsl_device_private *dev_priv,
-			 uint32_t flags,
-			 struct kgsl_context *context);
+int adreno_drawctxt_create(struct kgsl_device *device,
+			struct kgsl_pagetable *pagetable,
+			struct kgsl_context *context,
+			uint32_t flags);
 
 int adreno_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context);

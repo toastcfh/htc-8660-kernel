@@ -1457,14 +1457,12 @@ create_gmem_shadow(struct adreno_device *adreno_dev,
 
 /* create a new drawing context */
 
-int
-adreno_drawctxt_create(struct kgsl_device_private *dev_priv, uint32_t flags,
-		     struct kgsl_context *context)
+int adreno_drawctxt_create(struct kgsl_device *device,
+			struct kgsl_pagetable *pagetable,
+			struct kgsl_context *context, uint32_t flags)
 {
 	struct adreno_context *drawctxt;
-	struct kgsl_device *device = dev_priv->device;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-	struct kgsl_pagetable *pagetable = dev_priv->process_priv->pagetable;
 	struct tmp_ctx ctx;
 	int ret;
 

@@ -651,11 +651,9 @@ static int adreno_dump(struct kgsl_device *device)
 	KGSL_LOG_DUMP(device,
 		"MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
 
-	if (device->ftbl.device_readtimestamp != NULL) {
-		ts_processed = device->ftbl.device_readtimestamp(
-				device, KGSL_TIMESTAMP_RETIRED);
-		KGSL_LOG_DUMP(device, "TIMESTM RTRD: %08X\n", ts_processed);
-	}
+	ts_processed = device->ftbl->readtimestamp(device,
+		KGSL_TIMESTAMP_RETIRED);
+	KGSL_LOG_DUMP(device, "TIMESTM RTRD: %08X\n", ts_processed);
 
 	num_item = adreno_ringbuffer_count(&adreno_dev->ringbuffer,
 						cp_rb_rptr);

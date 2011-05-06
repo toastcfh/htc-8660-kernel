@@ -180,9 +180,8 @@ static void kgsl_memqueue_drain(struct kgsl_device *device)
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
 	/* get current EOP timestamp */
-	ts_processed = device->ftbl.device_readtimestamp(
-					device,
-					KGSL_TIMESTAMP_RETIRED);
+	ts_processed = device->ftbl->readtimestamp(device,
+		KGSL_TIMESTAMP_RETIRED);
 
 	list_for_each_entry_safe(entry, entry_tmp, &device->memqueue, list) {
 		KGSL_MEM_INFO(device,
@@ -279,10 +278,9 @@ EXPORT_SYMBOL(kgsl_unregister_ts_notifier);
 int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp)
 {
 	unsigned int ts_processed;
-	BUG_ON(device->ftbl.device_readtimestamp == NULL);
 
-	ts_processed = device->ftbl.device_readtimestamp(
-			device, KGSL_TIMESTAMP_RETIRED);
+	ts_processed = device->ftbl->readtimestamp(device,
+		KGSL_TIMESTAMP_RETIRED);
 
 	return timestamp_cmp(ts_processed, timestamp);
 }
@@ -290,27 +288,14 @@ EXPORT_SYMBOL(kgsl_check_timestamp);
 
 int kgsl_setstate(struct kgsl_device *device, uint32_t flags)
 {
-	int status = -ENXIO;
+	int status = 0;
 
-	if (flags && device->ftbl.device_setstate) {
-		status = device->ftbl.device_setstate(device, flags);
-	} else
-		status = 0;
+	if (flags && device->ftbl->setstate)
+		status = device->ftbl->setstate(device, flags);
 
 	return status;
 }
 EXPORT_SYMBOL(kgsl_setstate);
-
-int kgsl_idle(struct kgsl_device *device, unsigned int timeout)
-{
-	int status = -ENXIO;
-
-	if (device->ftbl.device_idle)
-		status = device->ftbl.device_idle(device, timeout);
-
-	return status;
-}
-EXPORT_SYMBOL(kgsl_idle);
 
 static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 {
@@ -340,13 +325,13 @@ static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 			break;
 		case KGSL_STATE_ACTIVE:
 			/* Wait for the device to become idle */
-			device->ftbl.device_idle(device, KGSL_TIMEOUT_DEFAULT);
+			device->ftbl->idle(device, KGSL_TIMEOUT_DEFAULT);
 		case KGSL_STATE_NAP:
 		case KGSL_STATE_SLEEP:
 			/* Get the completion ready to be waited upon. */
 			INIT_COMPLETION(device->hwaccess_gate);
-			device->ftbl.device_suspend_context(device);
-			device->ftbl.device_stop(device);
+			device->ftbl->suspend_context(device);
+			device->ftbl->stop(device);
 			device->state = KGSL_STATE_SUSPEND;
 			KGSL_PWR_WARN(device, "state -> SUSPEND, device %d\n",
 				device->id);
@@ -377,7 +362,7 @@ static int kgsl_resume_device(struct kgsl_device *device)
 	mutex_lock(&device->mutex);
 	if (device->state == KGSL_STATE_SUSPEND) {
 		device->requested_state = KGSL_STATE_ACTIVE;
-		status = device->ftbl.device_start(device, 0);
+		status = device->ftbl->start(device, 0);
 		if (status == 0) {
 			device->state = KGSL_STATE_ACTIVE;
 			KGSL_PWR_WARN(device,
@@ -390,7 +375,7 @@ static int kgsl_resume_device(struct kgsl_device *device)
 			device->state = KGSL_STATE_INIT;
 			goto end;
 		}
-		status = device->ftbl.device_resume_context(device);
+		status = device->ftbl->resume_context(device);
 		complete_all(&device->hwaccess_gate);
 	}
 	device->requested_state = KGSL_STATE_NONE;
@@ -566,7 +551,7 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 			break;
 
 		if (context->dev_priv == dev_priv) {
-			device->ftbl.device_drawctxt_destroy(device, context);
+			device->ftbl->drawctxt_destroy(device, context);
 			kgsl_destroy_context(dev_priv, context);
 		}
 
@@ -575,7 +560,7 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 
 	device->open_count--;
 	if (device->open_count == 0) {
-		result = device->ftbl.device_stop(device);
+		result = device->ftbl->stop(device);
 		device->state = KGSL_STATE_INIT;
 		KGSL_PWR_WARN(device, "state -> INIT, device %d\n", device->id);
 	}
@@ -642,7 +627,7 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 	kgsl_check_suspended(device);
 
 	if (device->open_count == 0) {
-		result = device->ftbl.device_start(device, true);
+		result = device->ftbl->start(device, true);
 
 		if (result) {
 			mutex_unlock(&device->mutex);
@@ -657,7 +642,7 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 
 	KGSL_DRV_INFO(device, "Initialized %s: mmu=%s pagetable_count=%d\n",
 		device->name, kgsl_mmu_enabled() ? "on" : "off",
-		KGSL_PAGETABLE_COUNT);
+		kgsl_pagetable_count);
 
 	return result;
 
@@ -753,7 +738,7 @@ static long kgsl_ioctl_device_getproperty(struct kgsl_device_private *dev_priv,
 		break;
 	}
 	default:
-		result = dev_priv->device->ftbl.device_getproperty(
+		result = dev_priv->device->ftbl->getproperty(
 					dev_priv->device, param->type,
 					param->value, param->sizebytes);
 	}
@@ -796,7 +781,7 @@ static long kgsl_ioctl_device_waittimestamp(struct kgsl_device_private
 	if (param->timeout == -1)
 		param->timeout = 10 * MSEC_PER_SEC;
 
-	result = dev_priv->device->ftbl.device_waittimestamp(dev_priv->device,
+	result = dev_priv->device->ftbl->waittimestamp(dev_priv->device,
 					param->timestamp,
 					param->timeout);
 
@@ -919,7 +904,7 @@ static long kgsl_ioctl_rb_issueibcmds(struct kgsl_device_private *dev_priv,
 		goto free_ibdesc;
 	}
 
-	result = dev_priv->device->ftbl.device_issueibcmds(dev_priv,
+	result = dev_priv->device->ftbl->issueibcmds(dev_priv,
 					     context,
 					     ibdesc,
 					     param->numibs,
@@ -956,8 +941,8 @@ static long kgsl_ioctl_cmdstream_readtimestamp(struct kgsl_device_private
 	struct kgsl_cmdstream_readtimestamp *param = data;
 
 	param->timestamp =
-		dev_priv->device->ftbl.device_readtimestamp(
-			dev_priv->device, param->type);
+		dev_priv->device->ftbl->readtimestamp(dev_priv->device,
+		param->type);
 
 	return 0;
 }
@@ -1003,10 +988,10 @@ static long kgsl_ioctl_drawctxt_create(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
-	if (dev_priv->device->ftbl.device_drawctxt_create != NULL)
-		result = dev_priv->device->ftbl.device_drawctxt_create(dev_priv,
-					param->flags,
-					context);
+	if (dev_priv->device->ftbl->drawctxt_create)
+		result = dev_priv->device->ftbl->drawctxt_create(
+			dev_priv->device, dev_priv->process_priv->pagetable,
+			context, param->flags);
 
 	param->drawctxt_id = context->id;
 
@@ -1031,9 +1016,9 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_device_private *dev_priv,
 		goto done;
 	}
 
-	result = dev_priv->device->ftbl.device_drawctxt_destroy(
-							dev_priv->device,
-							context);
+	if (dev_priv->device->ftbl->drawctxt_destroy)
+		result = dev_priv->device->ftbl->drawctxt_destroy(
+			dev_priv->device, context);
 
 	kgsl_destroy_context(dev_priv, context);
 
@@ -1595,7 +1580,7 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		func = kgsl_ioctl_funcs[nr].func;
 		lock = kgsl_ioctl_funcs[nr].lock;
 	} else {
-		func = dev_priv->device->ftbl.device_ioctl;
+		func = dev_priv->device->ftbl->ioctl;
 		lock = 1;
 	}
 

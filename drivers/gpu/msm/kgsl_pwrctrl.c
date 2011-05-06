@@ -252,7 +252,7 @@ static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
 	int idle, val;
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
-	idle = device->ftbl.device_idle_calc(device);
+	idle = device->ftbl->idle_calc(device);
 	if (!idle)
 		return;
 
@@ -650,11 +650,11 @@ int kgsl_pwrctrl_sleep(struct kgsl_device *device)
 
 	/* Work through the legal state transitions */
 	if (device->requested_state == KGSL_STATE_NAP) {
-		if (device->ftbl.device_isidle(device))
+		if (device->ftbl->isidle(device))
 			goto nap;
 	} else if (device->requested_state == KGSL_STATE_SLEEP) {
 		if (device->state == KGSL_STATE_NAP ||
-			device->ftbl.device_isidle(device))
+			device->ftbl->isidle(device))
 			goto sleep;
 	}
 
