@@ -69,54 +69,51 @@ struct kgsl_device_private;
 struct kgsl_context;
 
 struct kgsl_functable {
-	void (*device_regread) (struct kgsl_device *device,
-					unsigned int offsetwords,
-					unsigned int *value);
-	void (*device_regwrite) (struct kgsl_device *device,
-					unsigned int offsetwords,
-					unsigned int value);
-	void (*device_regread_isr) (struct kgsl_device *device,
-				    unsigned int offsetwords,
-				    unsigned int *value);
-	void (*device_regwrite_isr) (struct kgsl_device *device,
-				     unsigned int offsetwords,
-				     unsigned int value);
-	int (*device_setstate) (struct kgsl_device *device, uint32_t flags);
-	int (*device_idle) (struct kgsl_device *device, unsigned int timeout);
-	unsigned int (*device_isidle) (struct kgsl_device *device);
-	int (*device_suspend_context) (struct kgsl_device *device);
-	int (*device_resume_context) (struct kgsl_device *device);
-	int (*device_start) (struct kgsl_device *device, unsigned int init_ram);
-	int (*device_stop) (struct kgsl_device *device);
-	int (*device_getproperty) (struct kgsl_device *device,
-					enum kgsl_property_type type,
-					void *value,
-					unsigned int sizebytes);
-	int (*device_waittimestamp) (struct kgsl_device *device,
-					unsigned int timestamp,
-					unsigned int msecs);
-	unsigned int (*device_readtimestamp) (
-					struct kgsl_device *device,
-					enum kgsl_timestamp_type type);
-	int (*device_issueibcmds) (struct kgsl_device_private *dev_priv,
-				struct kgsl_context *context,
-				struct kgsl_ibdesc *ibdesc,
-				unsigned int sizedwords,
-				uint32_t *timestamp,
-				unsigned int flags);
-	int (*device_drawctxt_create) (struct kgsl_device_private *dev_priv,
-					uint32_t flags,
-					struct kgsl_context *context);
-	int (*device_drawctxt_destroy) (struct kgsl_device *device,
-					struct kgsl_context *context);
-	long (*device_ioctl) (struct kgsl_device_private *dev_priv,
-					unsigned int cmd, void *data);
-	int (*device_setup_pt)(struct kgsl_device *device,
-			       struct kgsl_pagetable *pagetable);
-
-	int (*device_cleanup_pt)(struct kgsl_device *device,
-				 struct kgsl_pagetable *pagetable);
-	unsigned int (*device_idle_calc)(struct kgsl_device *device);
+	/* Mandatory functions - these functions must be implemented
+	   by the client device.  The driver will not check for a NULL
+	   pointer before calling the hook.
+	 */
+	void (*regread) (struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int *value);
+	void (*regwrite) (struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int value);
+	void (*regread_isr) (struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int *value);
+	void (*regwrite_isr) (struct kgsl_device *device,
+		unsigned int offsetwords, unsigned int value);
+	int (*idle) (struct kgsl_device *device, unsigned int timeout);
+	unsigned int (*isidle) (struct kgsl_device *device);
+	int (*suspend_context) (struct kgsl_device *device);
+	int (*resume_context) (struct kgsl_device *device);
+	int (*start) (struct kgsl_device *device, unsigned int init_ram);
+	int (*stop) (struct kgsl_device *device);
+	int (*getproperty) (struct kgsl_device *device,
+		enum kgsl_property_type type, void *value,
+		unsigned int sizebytes);
+	int (*waittimestamp) (struct kgsl_device *device,
+		unsigned int timestamp, unsigned int msecs);
+	unsigned int (*readtimestamp) (struct kgsl_device *device,
+		enum kgsl_timestamp_type type);
+	int (*issueibcmds) (struct kgsl_device_private *dev_priv,
+		struct kgsl_context *context, struct kgsl_ibdesc *ibdesc,
+		unsigned int sizedwords, uint32_t *timestamp,
+		unsigned int flags);
+	long (*ioctl) (struct kgsl_device_private *dev_priv,
+		unsigned int cmd, void *data);
+	int (*setup_pt)(struct kgsl_device *device,
+		struct kgsl_pagetable *pagetable);
+	int (*cleanup_pt)(struct kgsl_device *device,
+		struct kgsl_pagetable *pagetable);
+	unsigned int (*idle_calc)(struct kgsl_device *device);
+	/* Optional functions - these functions are not mandatory.  The
+	   driver will check that the function pointer is not NULL before
+	   calling the hook */
+	int (*setstate) (struct kgsl_device *device, uint32_t flags);
+	int (*drawctxt_create) (struct kgsl_device *device,
+		struct kgsl_pagetable *pagetable, struct kgsl_context *context,
+		uint32_t flags);
+	int (*drawctxt_destroy) (struct kgsl_device *device,
+		struct kgsl_context *context);
 };
 
 struct kgsl_memregion {
@@ -139,7 +136,7 @@ struct kgsl_device {
 
 	struct kgsl_mmu mmu;
 	struct completion hwaccess_gate;
-	struct kgsl_functable ftbl;
+	const struct kgsl_functable *ftbl;
 	struct work_struct idle_check_ws;
 	struct timer_list idle_timer;
 	struct kgsl_pwrctrl pwrctrl;

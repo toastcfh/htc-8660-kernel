@@ -112,7 +112,6 @@ static void z180_regread_isr(struct kgsl_device *device,
 static void z180_regwrite_isr(struct kgsl_device *device,
 				unsigned int offsetwords,
 				unsigned int value);
-static void __devinit z180_getfunctable(struct kgsl_functable *ftbl);
 
 #define Z180_MMU_CONFIG					     \
 	(0x01							     \
@@ -127,6 +126,8 @@ static void __devinit z180_getfunctable(struct kgsl_functable *ftbl);
 	| (MMU_CONFIG << MH_MMU_CONFIG__VGT_R1_CLNT_BEHAVIOR__SHIFT) \
 	| (MMU_CONFIG << MH_MMU_CONFIG__TC_R_CLNT_BEHAVIOR__SHIFT)   \
 	| (MMU_CONFIG << MH_MMU_CONFIG__PA_W_CLNT_BEHAVIOR__SHIFT))
+
+static const struct kgsl_functable z180_functable;
 
 static struct z180_device device_2d0 = {
 	.dev = {
@@ -165,6 +166,7 @@ static struct z180_device device_2d0 = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_2D0_REG_MEMORY,
+		.ftbl = &z180_functable,
 	},
 };
 
@@ -205,6 +207,7 @@ static struct z180_device device_2d1 = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_2D1_REG_MEMORY,
+		.ftbl = &z180_functable,
 	},
 };
 
@@ -559,8 +562,6 @@ static int __devinit z180_probe(struct platform_device *pdev)
 
 	device = (struct kgsl_device *)pdev->id_entry->driver_data;
 	device->pdev = pdev;
-
-	z180_getfunctable(&device->ftbl);
 
 	z180_dev = Z180_DEVICE(device);
 	spin_lock_init(&z180_dev->cmdwin_lock);
@@ -1010,32 +1011,31 @@ static unsigned int z180_idle_calc(struct kgsl_device *device)
 	return device->pwrctrl.time;
 }
 
-static void __devinit z180_getfunctable(struct kgsl_functable *ftbl)
-{
-	if (ftbl == NULL)
-		return;
-	ftbl->device_regread = z180_regread;
-	ftbl->device_regwrite = z180_regwrite;
-	ftbl->device_regread_isr = z180_regread_isr;
-	ftbl->device_regwrite_isr = z180_regwrite_isr;
-	ftbl->device_setstate = z180_setstate;
-	ftbl->device_idle = z180_idle;
-	ftbl->device_isidle = z180_isidle;
-	ftbl->device_suspend_context = z180_suspend_context;
-	ftbl->device_resume_context = z180_resume_context;
-	ftbl->device_start = z180_start;
-	ftbl->device_stop = z180_stop;
-	ftbl->device_getproperty = z180_getproperty;
-	ftbl->device_waittimestamp = z180_waittimestamp;
-	ftbl->device_readtimestamp = z180_readtimestamp;
-	ftbl->device_issueibcmds = z180_cmdstream_issueibcmds;
-	ftbl->device_drawctxt_create = NULL;
-	ftbl->device_drawctxt_destroy = z180_drawctxt_destroy;
-	ftbl->device_ioctl = z180_ioctl;
-	ftbl->device_setup_pt = z180_setup_pt;
-	ftbl->device_cleanup_pt = z180_cleanup_pt;
-	ftbl->device_idle_calc = z180_idle_calc;
-}
+static const struct kgsl_functable z180_functable = {
+	/* Mandatory functions */
+	.regread = z180_regread,
+	.regwrite = z180_regwrite,
+	.regread_isr = z180_regread_isr,
+	.regwrite_isr = z180_regwrite_isr,
+	.idle = z180_idle,
+	.isidle = z180_isidle,
+	.suspend_context = z180_suspend_context,
+	.resume_context = z180_resume_context,
+	.start = z180_start,
+	.stop = z180_stop,
+	.getproperty = z180_getproperty,
+	.waittimestamp = z180_waittimestamp,
+	.readtimestamp = z180_readtimestamp,
+	.issueibcmds = z180_cmdstream_issueibcmds,
+	.ioctl = z180_ioctl,
+	.setup_pt = z180_setup_pt,
+	.cleanup_pt = z180_cleanup_pt,
+	.idle_calc = z180_idle_calc,
+	/* Optional functions */
+	.setstate = z180_setstate,
+	.drawctxt_create = NULL,
+	.drawctxt_destroy = z180_drawctxt_destroy,
+};
 
 static struct platform_device_id z180_id_table[] = {
 	{ DEVICE_2D0_NAME, (kernel_ulong_t)&device_2d0.dev, },

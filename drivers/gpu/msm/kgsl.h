@@ -165,35 +165,34 @@ uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 	struct kgsl_process_private *private, unsigned int gpuaddr,
 	size_t size);
-int kgsl_idle(struct kgsl_device *device, unsigned int timeout);
 int kgsl_setstate(struct kgsl_device *device, uint32_t flags);
 
 static inline void kgsl_regread(struct kgsl_device *device,
 				unsigned int offsetwords,
 				unsigned int *value)
 {
-	device->ftbl.device_regread(device, offsetwords, value);
+	device->ftbl->regread(device, offsetwords, value);
 }
 
 static inline void kgsl_regwrite(struct kgsl_device *device,
 				 unsigned int offsetwords,
 				 unsigned int value)
 {
-	device->ftbl.device_regwrite(device, offsetwords, value);
+	device->ftbl->regwrite(device, offsetwords, value);
 }
 
 static inline void kgsl_regread_isr(struct kgsl_device *device,
 				unsigned int offsetwords,
 				unsigned int *value)
 {
-	device->ftbl.device_regread_isr(device, offsetwords, value);
+	device->ftbl->regread_isr(device, offsetwords, value);
 }
 
 static inline void kgsl_regwrite_isr(struct kgsl_device *device,
 				 unsigned int offsetwords,
 				 unsigned int value)
 {
-	device->ftbl.device_regwrite_isr(device, offsetwords, value);
+	device->ftbl->regwrite_isr(device, offsetwords, value);
 }
 
 int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp);
@@ -266,6 +265,11 @@ static inline void
 kgsl_mem_entry_put(struct kgsl_mem_entry *entry)
 {
 	kref_put(&entry->refcount, kgsl_mem_entry_destroy);
+}
+
+static inline int kgsl_idle(struct kgsl_device *device, unsigned int timeout)
+{
+	return device->ftbl->idle(device, timeout);
 }
 
 #endif /* __KGSL_H */

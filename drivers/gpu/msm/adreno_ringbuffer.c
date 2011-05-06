@@ -754,8 +754,8 @@ int adreno_ringbuffer_extract(struct adreno_ringbuffer *rb,
 
 	GSL_RB_GET_READPTR(rb, &rb->rptr);
 
-	retired_timestamp = device->ftbl.device_readtimestamp(
-				device, KGSL_TIMESTAMP_RETIRED);
+	retired_timestamp = device->ftbl->readtimestamp(device,
+		KGSL_TIMESTAMP_RETIRED);
 	rmb();
 	KGSL_DRV_ERR(device, "GPU successfully executed till ts: %x\n",
 			retired_timestamp);

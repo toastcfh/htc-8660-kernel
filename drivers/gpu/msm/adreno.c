@@ -72,6 +72,8 @@
 /* max msecs to wait for gpu to finish its operation(s) */
 #define MAX_WAITGPU_SECS (HZ + HZ/2)
 
+static const struct kgsl_functable adreno_functable;
+
 static struct adreno_device device_3d0 = {
 	.dev = {
 		.name = DEVICE_3D0_NAME,
@@ -110,6 +112,7 @@ static struct adreno_device device_3d0 = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_3D0_REG_MEMORY,
+		.ftbl = &adreno_functable,
 	},
 	.gmemspace = {
 		.gpu_base = 0,
@@ -118,8 +121,6 @@ static struct adreno_device device_3d0 = {
 	.pfp_fw = NULL,
 	.pm4_fw = NULL,
 };
-
-static void __devinit adreno_getfunctable(struct kgsl_functable *ftbl);
 
 static int adreno_gmeminit(struct adreno_device *adreno_dev)
 {
@@ -510,8 +511,6 @@ adreno_probe(struct platform_device *pdev)
 	device->pdev = pdev;
 
 	init_completion(&device->recovery_gate);
-
-	adreno_getfunctable(&device->ftbl);
 
 	status = adreno_ringbuffer_init(device);
 	if (status != 0)
@@ -1342,32 +1341,31 @@ static unsigned int adreno_idle_calc(struct kgsl_device *device)
 	return ret;
 }
 
-static void __devinit adreno_getfunctable(struct kgsl_functable *ftbl)
-{
-	if (ftbl == NULL)
-		return;
-	ftbl->device_regread = adreno_regread;
-	ftbl->device_regwrite = adreno_regwrite;
-	ftbl->device_regread_isr = adreno_regread_isr;
-	ftbl->device_regwrite_isr = adreno_regwrite_isr;
-	ftbl->device_setstate = adreno_setstate;
-	ftbl->device_idle = adreno_idle;
-	ftbl->device_isidle = adreno_isidle;
-	ftbl->device_suspend_context = adreno_suspend_context;
-	ftbl->device_resume_context = adreno_resume_context;
-	ftbl->device_start = adreno_start;
-	ftbl->device_stop = adreno_stop;
-	ftbl->device_getproperty = adreno_getproperty;
-	ftbl->device_waittimestamp = adreno_waittimestamp;
-	ftbl->device_readtimestamp = adreno_readtimestamp;
-	ftbl->device_issueibcmds = adreno_ringbuffer_issueibcmds;
-	ftbl->device_drawctxt_create = adreno_drawctxt_create;
-	ftbl->device_drawctxt_destroy = adreno_drawctxt_destroy;
-	ftbl->device_ioctl = adreno_ioctl;
-	ftbl->device_setup_pt = adreno_setup_pt;
-	ftbl->device_cleanup_pt = adreno_cleanup_pt;
-	ftbl->device_idle_calc = adreno_idle_calc;
-}
+static const struct kgsl_functable adreno_functable = {
+	/* Mandatory functions */
+	.regread = adreno_regread,
+	.regwrite = adreno_regwrite,
+	.regread_isr = adreno_regread_isr,
+	.regwrite_isr = adreno_regwrite_isr,
+	.idle = adreno_idle,
+	.isidle = adreno_isidle,
+	.suspend_context = adreno_suspend_context,
+	.resume_context = adreno_resume_context,
+	.start = adreno_start,
+	.stop = adreno_stop,
+	.getproperty = adreno_getproperty,
+	.waittimestamp = adreno_waittimestamp,
+	.readtimestamp = adreno_readtimestamp,
+	.issueibcmds = adreno_ringbuffer_issueibcmds,
+	.ioctl = adreno_ioctl,
+	.setup_pt = adreno_setup_pt,
+	.cleanup_pt = adreno_cleanup_pt,
+	.idle_calc = adreno_idle_calc,
+	/* Optional functions */
+	.setstate = adreno_setstate,
+	.drawctxt_create = adreno_drawctxt_create,
+	.drawctxt_destroy = adreno_drawctxt_destroy,
+};
 
 static struct platform_device_id adreno_id_table[] = {
 	{ DEVICE_3D0_NAME, (kernel_ulong_t)&device_3d0.dev, },
