@@ -120,7 +120,7 @@ struct kgsl_functable {
 
 	int (*device_cleanup_pt)(struct kgsl_device *device,
 				 struct kgsl_pagetable *pagetable);
-
+	unsigned int (*device_idle_calc)(struct kgsl_device *device);
 };
 
 struct kgsl_memregion {

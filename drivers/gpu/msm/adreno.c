@@ -244,6 +244,8 @@ irqreturn_t kgsl_yamato_isr(int irq, void *data)
 	if (device->pwrctrl.nap_allowed == true) {
 		device->requested_state = KGSL_STATE_NAP;
 		schedule_work(&device->idle_check_ws);
+	} else if (device->pwrctrl.idle_pass == true) {
+		schedule_work(&device->idle_check_ws);
 	}
 	/* Reset the time-out in our idle timer */
 	mod_timer(&device->idle_timer,
@@ -1252,6 +1254,54 @@ static long kgsl_yamato_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
+static inline s64 kgsl_yamato_ticks_to_us(u32 ticks, u32 gpu_freq)
+{
+	gpu_freq /= 1000000;
+	return ticks / gpu_freq;
+}
+
+static unsigned int kgsl_yamato_idle_calc(struct kgsl_device *device)
+{
+	unsigned int ret, reg;
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+
+	/* In order to calculate idle you have to have run the algorithm *
+	 * at least once to get a start time. */
+	if (pwr->time != 0) {
+		s64 total_time, busy_time, tmp;
+		/* Stop the performance moniter and read the current *
+		 * busy cycles. */
+		kgsl_yamato_regwrite(device,
+					REG_CP_PERFMON_CNTL,
+					REG_PERF_MODE_CNT |
+					REG_PERF_STATE_FREEZE);
+		kgsl_yamato_regread(device, REG_RBBM_PERFCOUNTER1_LO, &reg);
+		tmp = ktime_to_us(ktime_get());
+		total_time = tmp - pwr->time;
+		pwr->time = tmp;
+		busy_time = kgsl_yamato_ticks_to_us(reg, device->pwrctrl.
+				pwrlevels[device->pwrctrl.active_pwrlevel].
+				gpu_freq);
+		ret = total_time - busy_time;
+		kgsl_yamato_regwrite(device,
+					REG_CP_PERFMON_CNTL,
+					REG_PERF_MODE_CNT |
+					REG_PERF_STATE_RESET);
+	} else {
+		pwr->time = ktime_to_us(ktime_get());
+		ret = 0;
+	}
+
+	/* re-enable the performance moniters */
+	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &reg);
+	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, (reg | 0x40));
+	kgsl_yamato_regwrite(device, REG_RBBM_PERFCOUNTER1_SELECT, 0x1);
+	kgsl_yamato_regwrite(device,
+				REG_CP_PERFMON_CNTL,
+				REG_PERF_MODE_CNT | REG_PERF_STATE_ENABLE);
+	return ret;
+}
+
 static void __devinit kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 {
 	if (ftbl == NULL)
@@ -1276,6 +1326,7 @@ static void __devinit kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 	ftbl->device_ioctl = kgsl_yamato_ioctl;
 	ftbl->device_setup_pt = kgsl_yamato_setup_pt;
 	ftbl->device_cleanup_pt = kgsl_yamato_cleanup_pt;
+	ftbl->device_idle_calc = kgsl_yamato_idle_calc;
 }
 
 static struct platform_device_id kgsl_3d_id_table[] = {

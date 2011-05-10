@@ -208,7 +208,8 @@ static void kgsl_memqueue_drain_unlocked(struct kgsl_device *device)
 static void kgsl_check_idle_locked(struct kgsl_device *device)
 {
 	if (device->pwrctrl.nap_allowed == true &&
-	    device->state & KGSL_STATE_ACTIVE) {
+	    device->state == KGSL_STATE_ACTIVE &&
+		device->requested_state == KGSL_STATE_NONE) {
 		device->requested_state = KGSL_STATE_NAP;
 		if (kgsl_pwrctrl_sleep(device) != 0)
 			mod_timer(&device->idle_timer,
