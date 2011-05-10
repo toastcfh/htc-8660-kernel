@@ -170,6 +170,7 @@ struct kgsl_device_pwr_data {
 	unsigned int idle_timeout;
 	unsigned int nap_allowed;
 	bool pwrrail_first;
+	unsigned int idle_pass;
 };
 
 struct kgsl_clk_data {
