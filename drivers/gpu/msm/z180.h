@@ -33,20 +33,17 @@
 #define DEVICE_2D0_NAME "kgsl-2d0"
 #define DEVICE_2D1_NAME "kgsl-2d1"
 
-struct kgsl_g12_ringbuffer {
+struct z180_ringbuffer {
 	unsigned int prevctx;
 	struct kgsl_memdesc      cmdbufdesc;
 };
 
-struct kgsl_g12_device {
+struct z180_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
 	int current_timestamp;
 	int timestamp;
-	struct kgsl_g12_ringbuffer ringbuffer;
+	struct z180_ringbuffer ringbuffer;
 	spinlock_t cmdwin_lock;
 };
-
-int kgsl_g12_setstate(struct kgsl_device *device, uint32_t flags);
-int kgsl_g12_idle(struct kgsl_device *device, unsigned int timeout);
 
 #endif /* __Z180_H */

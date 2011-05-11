@@ -70,7 +70,7 @@ static const struct pm_id_name pm3_types[] = {
 
 /* GPU < Z470 */
 
-static const int yamato_registers[] = {
+static const int a200_registers[] = {
 	0x0000, 0x0008, 0x0010, 0x002c, 0x00ec, 0x00f4,
 	0x0100, 0x0110, 0x0118, 0x011c,
 	0x0700, 0x0704, 0x070c, 0x0720, 0x0754, 0x0764,
@@ -114,7 +114,7 @@ static const int yamato_registers[] = {
 
 /* GPU = Z470 */
 
-static const int leia_registers[] = {
+static const int a220_registers[] = {
 	0x0000, 0x0008, 0x0010, 0x002c, 0x00ec, 0x00f4,
 	0x0100, 0x0110, 0x0118, 0x011c,
 	0x0700, 0x0704, 0x070c, 0x0720, 0x0754, 0x0764,
@@ -160,18 +160,18 @@ static struct {
 	const int *registers;
 	int len;
 } kgsl_registers[] = {
-	{ KGSL_CHIPID_LEIA_REV470, leia_registers,
-	  ARRAY_SIZE(leia_registers) / 2 },
-	{ KGSL_CHIPID_LEIA_REV470_TEMP, leia_registers,
-	  ARRAY_SIZE(leia_registers) / 2 },
-	{ KGSL_CHIPID_YAMATODX_REV21, yamato_registers,
-	  ARRAY_SIZE(yamato_registers) / 2 },
-	{ KGSL_CHIPID_YAMATODX_REV211, yamato_registers,
-	  ARRAY_SIZE(yamato_registers) / 2 },
+	{ KGSL_CHIPID_LEIA_REV470, a220_registers,
+	  ARRAY_SIZE(a220_registers) / 2 },
+	{ KGSL_CHIPID_LEIA_REV470_TEMP, a220_registers,
+	  ARRAY_SIZE(a220_registers) / 2 },
+	{ KGSL_CHIPID_YAMATODX_REV21, a200_registers,
+	  ARRAY_SIZE(a200_registers) / 2 },
+	{ KGSL_CHIPID_YAMATODX_REV211, a200_registers,
+	  ARRAY_SIZE(a200_registers) / 2 },
 	{ 0x0, NULL, 0},
 };
 
-static uint32_t kgsl_is_pm4_len(uint32_t word)
+static uint32_t adreno_is_pm4_len(uint32_t word)
 {
 	if (word == INVALID_RB_CMD)
 		return 0;
@@ -179,14 +179,14 @@ static uint32_t kgsl_is_pm4_len(uint32_t word)
 	return (word >> 16) & 0x3FFF;
 }
 
-static bool kgsl_is_pm4_type(uint32_t word)
+static bool adreno_is_pm4_type(uint32_t word)
 {
 	int i;
 
 	if (word == INVALID_RB_CMD)
 		return 1;
 
-	if (kgsl_is_pm4_len(word) > 16)
+	if (adreno_is_pm4_len(word) > 16)
 		return 0;
 
 	if ((word & (3<<30)) == PM4_TYPE0_PKT) {
@@ -206,7 +206,7 @@ static bool kgsl_is_pm4_type(uint32_t word)
 	return 0;
 }
 
-static const char *kgsl_pm4_name(uint32_t word)
+static const char *adreno_pm4_name(uint32_t word)
 {
 	int i;
 
@@ -230,7 +230,7 @@ static const char *kgsl_pm4_name(uint32_t word)
 	return "????????";
 }
 
-static void kgsl_dump_regs(struct kgsl_device *device,
+static void adreno_dump_regs(struct kgsl_device *device,
 			   const int *registers, int size)
 {
 	int range = 0, offset = 0;
@@ -327,7 +327,7 @@ static void dump_ib1(struct kgsl_device *device, uint32_t pt_base,
 	}
 }
 
-static void kgsl_dump_rb_buffer(const void *buf, size_t len,
+static void adreno_dump_rb_buffer(const void *buf, size_t len,
 		char *linebuf, size_t linebuflen, int *argp)
 {
 	const u32 *ptr4 = buf;
@@ -343,10 +343,10 @@ static void kgsl_dump_rb_buffer(const void *buf, size_t len,
 			lx += scnprintf(linebuf + lx, linebuflen - lx, "  ");
 		else
 			nxsp = 1;
-		if (!*argp && kgsl_is_pm4_type(ptr4[j])) {
+		if (!*argp && adreno_is_pm4_type(ptr4[j])) {
 			lx += scnprintf(linebuf + lx, linebuflen - lx,
-				"%s", kgsl_pm4_name(ptr4[j]));
-			*argp = -(kgsl_is_pm4_len(ptr4[j])+1);
+				"%s", adreno_pm4_name(ptr4[j]));
+			*argp = -(adreno_is_pm4_len(ptr4[j])+1);
 		} else {
 			lx += scnprintf(linebuf + lx, linebuflen - lx,
 				"%8.8X", ptr4[j]);
@@ -363,7 +363,7 @@ static void kgsl_dump_rb_buffer(const void *buf, size_t len,
 	linebuf[lx] = '\0';
 }
 
-static bool kgsl_rb_use_hex(void)
+static bool adreno_rb_use_hex(void)
 {
 #ifdef CONFIG_MSM_KGSL_PSTMRTMDMP_RB_HEX
 	return 1;
@@ -372,7 +372,7 @@ static bool kgsl_rb_use_hex(void)
 #endif
 }
 
-static void kgsl_dump_rb(struct kgsl_device *device, const void *buf,
+static void adreno_dump_rb(struct kgsl_device *device, const void *buf,
 			 size_t len, int start, int size)
 {
 	const uint32_t *ptr = buf;
@@ -386,18 +386,18 @@ static void kgsl_dump_rb(struct kgsl_device *device, const void *buf,
 		int linelen = min(remaining, rowsize);
 		remaining -= rowsize;
 
-		if (kgsl_rb_use_hex())
+		if (adreno_rb_use_hex())
 			hex_dump_to_buffer(ptr+i, linelen*4, rowsize*4, 4,
 				linebuf, sizeof(linebuf), 0);
 		else
-			kgsl_dump_rb_buffer(ptr+i, linelen, linebuf,
+			adreno_dump_rb_buffer(ptr+i, linelen, linebuf,
 				sizeof(linebuf), &args);
 		KGSL_LOG_DUMP(device,
 			"RB: %4.4X:%s\n", (start+i)%size, linebuf);
 	}
 }
 
-static bool kgsl_ib_dump_enabled(void)
+static bool adreno_ib_dump_enabled(void)
 {
 #ifdef CONFIG_MSM_KGSL_PSTMRTMDMP_NO_IB_DUMP
 	return 0;
@@ -411,7 +411,7 @@ struct log_field {
 	const char *display;
 };
 
-static int kgsl_dump_fields_line(struct kgsl_device *device,
+static int adreno_dump_fields_line(struct kgsl_device *device,
 				 const char *start, char *str, int slen,
 				 const struct log_field **lines,
 				 int num)
@@ -442,7 +442,7 @@ static int kgsl_dump_fields_line(struct kgsl_device *device,
 	return num;
 }
 
-static void kgsl_dump_fields(struct kgsl_device *device,
+static void adreno_dump_fields(struct kgsl_device *device,
 			     const char *start, const struct log_field *lines,
 			     int num)
 {
@@ -452,7 +452,7 @@ static void kgsl_dump_fields(struct kgsl_device *device,
 	lb[sizeof(lb)  - 1] = '\0';
 
 	while (num) {
-		int ret = kgsl_dump_fields_line(device, sstr, lb,
+		int ret = adreno_dump_fields_line(device, sstr, lb,
 			sizeof(lb) - 1, &lines, num);
 
 		if (ret == num)
@@ -463,7 +463,7 @@ static void kgsl_dump_fields(struct kgsl_device *device,
 	}
 }
 
-static int kgsl_dump_yamato(struct kgsl_device *device)
+static int adreno_dump(struct kgsl_device *device)
 {
 	unsigned int r1, r2, r3, rbbm_status;
 	unsigned int cp_ib1_base, cp_ib1_bufsz, cp_stat;
@@ -481,7 +481,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 
 	static struct ib_list ib_list;
 
-	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
@@ -538,7 +538,8 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 		};
 		snprintf(cmdFifo, sizeof(cmdFifo), "CMD FIFO=%01X  ",
 			rbbm_status & 0xf);
-		kgsl_dump_fields(device, " STATUS=", lines, ARRAY_SIZE(lines));
+		adreno_dump_fields(device, " STATUS=", lines,
+				ARRAY_SIZE(lines));
 	}
 
 	kgsl_regread(device, REG_CP_RB_BASE, &cp_rb_base);
@@ -588,7 +589,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat &  BIT(1), "RD_RQ_BSY  1"},
 			{cp_stat &  BIT(2), "RD_RTN_BSY 2"},
 		};
-		kgsl_dump_fields(device, "    MIU=", lns, ARRAY_SIZE(lns));
+		adreno_dump_fields(device, "    MIU=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -598,7 +599,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat &  BIT(9), "ST_BUSY    9"},
 			{cp_stat & BIT(10), "BUSY      10"},
 		};
-		kgsl_dump_fields(device, "    CSF=", lns, ARRAY_SIZE(lns));
+		adreno_dump_fields(device, "    CSF=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -608,7 +609,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat & BIT(16), "ST_QUEUE_B16"},
 			{cp_stat & BIT(17), "PFP_BUSY  17"},
 		};
-		kgsl_dump_fields(device, "   RING=", lns, ARRAY_SIZE(lns));
+		adreno_dump_fields(device, "   RING=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -625,7 +626,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat & BIT(30), "MIU_FF EM 30"},
 			{cp_stat & BIT(31), "CP_BUSY   31"},
 		};
-		kgsl_dump_fields(device, " CP_STT=", lns, ARRAY_SIZE(lns));
+		adreno_dump_fields(device, " CP_STT=", lns, ARRAY_SIZE(lns));
 	}
 #endif
 
@@ -672,7 +673,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 		KGSL_LOG_DUMP(device, "TIMESTM RTRD: %08X\n", ts_processed);
 	}
 
-	num_item = kgsl_ringbuffer_count(&yamato_device->ringbuffer,
+	num_item = adreno_ringbuffer_count(&adreno_dev->ringbuffer,
 						cp_rb_rptr);
 	if (num_item <= 0)
 		KGSL_LOG_POSTMORTEM_WRITE(device, "Ringbuffer is Empty.\n");
@@ -736,9 +737,9 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	KGSL_LOG_DUMP(device,
 		"RB: addr=%8.8x  window:%4.4x-%4.4x, start:%4.4x\n",
 		cp_rb_base, cp_rb_rptr, cp_rb_wptr, read_idx);
-	kgsl_dump_rb(device, rb_copy, num_item<<2, read_idx, rb_count);
+	adreno_dump_rb(device, rb_copy, num_item<<2, read_idx, rb_count);
 
-	if (kgsl_ib_dump_enabled()) {
+	if (adreno_ib_dump_enabled()) {
 		for (read_idx = 64; read_idx >= 0; --read_idx) {
 			uint32_t this_cmd = rb_copy[read_idx];
 			if (this_cmd == pm4_type3_packet(
@@ -772,7 +773,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 
 	for (i = 0; kgsl_pmregs_enabled() && kgsl_registers[i].id; i++) {
 		if (kgsl_registers[i].id == device->chip_id) {
-			kgsl_dump_regs(device, kgsl_registers[i].registers,
+			adreno_dump_regs(device, kgsl_registers[i].registers,
 				       kgsl_registers[i].len);
 			break;
 		}
@@ -785,14 +786,14 @@ end:
 }
 
 /**
- * kgsl_postmortem_dump - Dump the current GPU state
+ * adreno_postmortem_dump - Dump the current GPU state
  * @device - A pointer to the KGSL device to dump
  * @manual - A flag that indicates if this was a manually triggered
  *           dump (from debugfs).  If zero, then this is assumed to be a
  *           dump automaticlaly triggered from a hang
 */
 
-int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
+int adreno_postmortem_dump(struct kgsl_device *device, int manual)
 {
 	bool saved_nap;
 
@@ -840,7 +841,7 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 	mutex_unlock(&device->mutex);
 	flush_workqueue(device->work_queue);
 	mutex_lock(&device->mutex);
-	kgsl_dump_yamato(device);
+	adreno_dump(device);
 
 	/* Restore nap mode */
 	device->pwrctrl.nap_allowed = saved_nap;

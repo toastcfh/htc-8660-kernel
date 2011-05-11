@@ -63,7 +63,7 @@ struct kgsl_pwrctrl {
 	struct regulator *gpu_reg;
 	uint32_t pcl;
 	unsigned int nap_allowed;
-	struct kgsl_yamato_context *suspended_ctxt;
+	struct adreno_context *suspended_ctxt;
 	const char *regulator_name;
 	const char *irq_name;
 	const char *src_clk_name;

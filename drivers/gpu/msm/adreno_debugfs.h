@@ -31,7 +31,7 @@
 
 #ifdef CONFIG_DEBUG_FS
 
-int kgsl_yamato_debugfs_init(struct kgsl_device *device);
+int adreno_debugfs_init(struct kgsl_device *device);
 
 extern int kgsl_pm_regs_enabled;
 
@@ -41,7 +41,7 @@ static inline int kgsl_pmregs_enabled(void)
 }
 
 #else
-static inline int kgsl_yamato_debugfs_init(struct kgsl_device *device)
+static inline int adreno_debugfs_init(struct kgsl_device *device)
 {
 	return 0;
 }
