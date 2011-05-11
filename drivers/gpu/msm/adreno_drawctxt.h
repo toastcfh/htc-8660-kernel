@@ -54,7 +54,7 @@
 #define CTXT_FLAGS_GPU_HANG		0x00008000
 
 struct kgsl_device;
-struct kgsl_yamato_device;
+struct adreno_device;
 struct kgsl_device_private;
 struct kgsl_context;
 
@@ -80,7 +80,7 @@ struct gmem_shadow_t {
 	struct kgsl_memdesc quad_texcoords;
 };
 
-struct kgsl_yamato_context {
+struct adreno_context {
 	uint32_t flags;
 	struct kgsl_pagetable *pagetable;
 	struct kgsl_memdesc gpustate;
@@ -96,17 +96,17 @@ struct kgsl_yamato_context {
 };
 
 
-int kgsl_drawctxt_create(struct kgsl_device_private *dev_priv,
+int adreno_drawctxt_create(struct kgsl_device_private *dev_priv,
 			 uint32_t flags,
 			 struct kgsl_context *context);
 
-int kgsl_drawctxt_destroy(struct kgsl_device *device,
+int adreno_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context);
 
-void kgsl_drawctxt_switch(struct kgsl_yamato_device *yamato_device,
-				struct kgsl_yamato_context *drawctxt,
+void adreno_drawctxt_switch(struct adreno_device *adreno_dev,
+				struct adreno_context *drawctxt,
 				unsigned int flags);
-int kgsl_drawctxt_set_bin_base_offset(struct kgsl_device *device,
+int adreno_drawctxt_set_bin_base_offset(struct kgsl_device *device,
 				      struct kgsl_context *context,
 					unsigned int offset);
 

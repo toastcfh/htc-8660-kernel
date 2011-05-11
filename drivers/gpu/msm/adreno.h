@@ -35,6 +35,9 @@
 #define DEVICE_3D_NAME "kgsl-3d"
 #define DEVICE_3D0_NAME "kgsl-3d0"
 
+#define ADRENO_DEVICE(device) \
+		KGSL_CONTAINER_OF(device, struct adreno_device, dev)
+
 /* Flags to control command packet settings */
 #define KGSL_CMD_FLAGS_PMODE		0x00000001
 #define KGSL_CMD_FLAGS_NO_TS_CMP	0x00000002
@@ -44,27 +47,27 @@
 #define KGSL_CONTEXT_TO_MEM_IDENTIFIER	0xDEADBEEF
 #define KGSL_CMD_IDENTIFIER		0xFEEDFACE
 
-struct kgsl_yamato_device {
+struct adreno_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
 	struct kgsl_memregion gmemspace;
-	struct kgsl_yamato_context *drawctxt_active;
+	struct adreno_context *drawctxt_active;
 	wait_queue_head_t ib1_wq;
 	unsigned int *pfp_fw;
 	size_t pfp_fw_size;
 	unsigned int *pm4_fw;
 	size_t pm4_fw_size;
-	struct kgsl_ringbuffer ringbuffer;
+	struct adreno_ringbuffer ringbuffer;
 };
 
-int kgsl_yamato_idle(struct kgsl_device *device, unsigned int timeout);
-void kgsl_yamato_regread(struct kgsl_device *device, unsigned int offsetwords,
+int adreno_idle(struct kgsl_device *device, unsigned int timeout);
+void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
-void kgsl_yamato_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int value);
-void kgsl_yamato_regread_isr(struct kgsl_device *device,
+void adreno_regread_isr(struct kgsl_device *device,
 			     unsigned int offsetwords,
 			     unsigned int *value);
-void kgsl_yamato_regwrite_isr(struct kgsl_device *device,
+void adreno_regwrite_isr(struct kgsl_device *device,
 			      unsigned int offsetwords,
 			      unsigned int value);
 

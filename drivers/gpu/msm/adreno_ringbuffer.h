@@ -55,7 +55,7 @@
 #define GSL_RB_SIZE_2M		18
 #define GSL_RB_SIZE_4M		19
 
-/* Yamato ringbuffer config*/
+/* Adreno ringbuffer config*/
 static const unsigned int kgsl_cfg_rb_sizelog2quadwords = GSL_RB_SIZE_32K;
 static const unsigned int kgsl_cfg_rb_blksizequadwords  = GSL_RB_SIZE_16;
 
@@ -78,7 +78,7 @@ struct kgsl_rbmemptrs {
 #define GSL_RB_MEMPTRS_WPTRPOLL_OFFSET \
 	(offsetof(struct kgsl_rbmemptrs, wptr_poll))
 
-struct kgsl_ringbuffer {
+struct adreno_ringbuffer {
 	struct kgsl_device *device;
 	uint32_t flags;
 
@@ -121,7 +121,7 @@ struct kgsl_ringbuffer {
 #else
 #define GSL_RB_MEMPTRS_SCRATCH_MASK 0x0
 #define GSL_RB_INIT_TIMESTAMP(rb) \
-		kgsl_yamato_regwrite((rb)->device->id, REG_CP_TIMESTAMP, 0)
+		adreno_regwrite((rb)->device->id, REG_CP_TIMESTAMP, 0)
 
 #endif /* GSL_RB_USE_MEMTIMESTAMP */
 
@@ -136,42 +136,44 @@ struct kgsl_ringbuffer {
 #define GSL_RB_CNTL_NO_UPDATE 0x1 /* disable */
 #define GSL_RB_GET_READPTR(rb, data) \
 	do { \
-		kgsl_yamato_regread((rb)->device->id, REG_CP_RB_RPTR, (data)); \
+		adreno_regread((rb)->device->id, REG_CP_RB_RPTR, (data)); \
 	} while (0)
 #endif /* GSL_RB_USE_MEMRPTR */
 
 #define GSL_RB_CNTL_POLL_EN 0x0 /* disable */
 
-int kgsl_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
+int adreno_ringbuffer_issueibcmds(struct kgsl_device_private *dev_priv,
 				struct kgsl_context *context,
-				struct kgsl_ibdesc *ibdesc, unsigned int numibs,
+				struct kgsl_ibdesc *ibdesc,
+				unsigned int numibs,
 				uint32_t *timestamp,
 				unsigned int flags);
 
-int kgsl_ringbuffer_init(struct kgsl_device *device);
+int adreno_ringbuffer_init(struct kgsl_device *device);
 
-int kgsl_ringbuffer_start(struct kgsl_ringbuffer *rb, unsigned int init_ram);
+int adreno_ringbuffer_start(struct adreno_ringbuffer *rb,
+				unsigned int init_ram);
 
-int kgsl_ringbuffer_stop(struct kgsl_ringbuffer *rb);
+int adreno_ringbuffer_stop(struct adreno_ringbuffer *rb);
 
-int kgsl_ringbuffer_close(struct kgsl_ringbuffer *rb);
+int adreno_ringbuffer_close(struct adreno_ringbuffer *rb);
 
-void kgsl_ringbuffer_issuecmds(struct kgsl_device *device,
+void adreno_ringbuffer_issuecmds(struct kgsl_device *device,
 					unsigned int flags,
 					unsigned int *cmdaddr,
 					int sizedwords);
 
 void kgsl_cp_intrcallback(struct kgsl_device *device);
 
-int kgsl_ringbuffer_extract(struct kgsl_ringbuffer *rb,
+int adreno_ringbuffer_extract(struct adreno_ringbuffer *rb,
 				unsigned int *temp_rb_buffer,
 				int *rb_size);
 
 void
-kgsl_ringbuffer_restore(struct kgsl_ringbuffer *rb, unsigned int *rb_buff,
+adreno_ringbuffer_restore(struct adreno_ringbuffer *rb, unsigned int *rb_buff,
 			int num_rb_contents);
 
-static inline int kgsl_ringbuffer_count(struct kgsl_ringbuffer *rb,
+static inline int adreno_ringbuffer_count(struct adreno_ringbuffer *rb,
 	unsigned int rptr)
 {
 	if (rb->wptr >= rptr)

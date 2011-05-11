@@ -35,7 +35,7 @@ static int pm_dump_set(void *data, u64 val)
 
 	if (val) {
 		mutex_lock(&device->mutex);
-		kgsl_postmortem_dump(device, 1);
+		adreno_postmortem_dump(device, 1);
 		mutex_unlock(&device->mutex);
 	}
 
@@ -418,7 +418,7 @@ static const struct file_operations kgsl_mh_debug_fops = {
 	.read = kgsl_mh_debug_read,
 };
 
-void kgsl_yamato_debugfs_init(struct kgsl_device *device)
+void adreno_debugfs_init(struct kgsl_device *device)
 {
 	if (!device->d_debugfs || IS_ERR(device->d_debugfs))
 		return;
