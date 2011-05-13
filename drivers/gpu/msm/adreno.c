@@ -574,13 +574,6 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	adreno_regwrite(device, REG_MH_ARBITER_CONFIG,
 				ADRENO_CFG_MHARB);
 
-	if (!adreno_is_a220(adreno_dev)) {
-		adreno_regwrite(device,
-			 REG_MH_CLNT_INTF_CTRL_CONFIG1, 0x00030f27);
-		adreno_regwrite(device,
-			 REG_MH_CLNT_INTF_CTRL_CONFIG2, 0x00472747);
-	}
-
 	/* Remove 1k boundary check in z470 to avoid GPU hang.
 	   Notice that, this solution won't work if both EBI and SMI are used */
 	if (adreno_is_a220(adreno_dev)) {
