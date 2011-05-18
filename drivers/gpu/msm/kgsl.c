@@ -1217,7 +1217,7 @@ static int kgsl_setup_phys_file(struct kgsl_mem_entry *entry,
 	entry->memdesc.size = size;
 	entry->memdesc.physaddr = phys + (offset & PAGE_MASK);
 	entry->memdesc.hostptr = (void *) (virt + (offset & PAGE_MASK));
-	entry->memdesc.ops = &kgsl_contig_ops;
+	entry->memdesc.ops = &kgsl_contiguous_ops;
 
 	return 0;
 }
@@ -1809,7 +1809,7 @@ kgsl_register_device(struct kgsl_device *device)
 	if (ret != 0)
 		goto err_dest_work_q;
 
-	ret = kgsl_allocate_contig(&device->memstore,
+	ret = kgsl_allocate_contiguous(&device->memstore,
 		sizeof(struct kgsl_devmemstore));
 
 	if (ret != 0)
