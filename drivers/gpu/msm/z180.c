@@ -142,20 +142,6 @@ static struct z180_device device_2d0 = {
 			   all pages. */
 			.mpu_base = 0x00000000,
 			.mpu_range =  0xFFFFF000,
-			.reg = {
-				.config = ADDR_MH_MMU_CONFIG,
-				.mpu_base = ADDR_MH_MMU_MPU_BASE,
-				.mpu_end = ADDR_MH_MMU_MPU_END,
-				.va_range = ADDR_MH_MMU_VA_RANGE,
-				.pt_page = ADDR_MH_MMU_PT_BASE,
-				.page_fault = ADDR_MH_MMU_PAGE_FAULT,
-				.tran_error = ADDR_MH_MMU_TRAN_ERROR,
-				.invalidate = ADDR_MH_MMU_INVALIDATE,
-				.interrupt_mask = ADDR_MH_INTERRUPT_MASK,
-				.interrupt_status = ADDR_MH_INTERRUPT_STATUS,
-				.interrupt_clear = ADDR_MH_INTERRUPT_CLEAR,
-				.axi_error = ADDR_MH_AXI_ERROR,
-			},
 		},
 		.pwrctrl = {
 			.pwr_rail = PWR_RAIL_GRP_2D_CLK,
@@ -183,20 +169,6 @@ static struct z180_device device_2d1 = {
 			   all pages. */
 			.mpu_base = 0x00000000,
 			.mpu_range =  0xFFFFF000,
-			.reg = {
-				.config = ADDR_MH_MMU_CONFIG,
-				.mpu_base = ADDR_MH_MMU_MPU_BASE,
-				.mpu_end = ADDR_MH_MMU_MPU_END,
-				.va_range = ADDR_MH_MMU_VA_RANGE,
-				.pt_page = ADDR_MH_MMU_PT_BASE,
-				.page_fault = ADDR_MH_MMU_PAGE_FAULT,
-				.tran_error = ADDR_MH_MMU_TRAN_ERROR,
-				.invalidate = ADDR_MH_MMU_INVALIDATE,
-				.interrupt_mask = ADDR_MH_INTERRUPT_MASK,
-				.interrupt_status = ADDR_MH_INTERRUPT_STATUS,
-				.interrupt_clear = ADDR_MH_INTERRUPT_CLEAR,
-				.axi_error = ADDR_MH_AXI_ERROR,
-			},
 		},
 		.pwrctrl = {
 			.pwr_rail = PWR_RAIL_GRP_2D_CLK,
@@ -417,28 +389,9 @@ static int z180_idle(struct kgsl_device *device, unsigned int timeout)
 	return status;
 }
 
-static int z180_setstate(struct kgsl_device *device, uint32_t flags)
+static void z180_setstate(struct kgsl_device *device, uint32_t flags)
 {
-#ifdef CONFIG_MSM_KGSL_MMU
-	unsigned int mh_mmu_invalidate = 0x00000003; /*invalidate all and tc */
-
-	if (flags & KGSL_MMUFLAGS_PTUPDATE) {
-		z180_idle(device, KGSL_TIMEOUT_DEFAULT);
-		z180_regwrite(device, ADDR_MH_MMU_PT_BASE,
-				     device->mmu.hwpagetable->base.gpuaddr);
-		z180_regwrite(device, ADDR_MH_MMU_VA_RANGE,
-				     (device->mmu.hwpagetable->
-				      va_base | (device->mmu.hwpagetable->
-						 va_range >> 16)));
-		z180_regwrite(device, ADDR_MH_MMU_INVALIDATE,
-				     mh_mmu_invalidate);
-	}
-
-	if (flags & KGSL_MMUFLAGS_TLBFLUSH)
-		z180_regwrite(device, ADDR_MH_MMU_INVALIDATE,
-			     mh_mmu_invalidate);
-#endif
-	return 0;
+	kgsl_default_setstate(device, flags);
 }
 
 int
@@ -632,12 +585,13 @@ static int z180_start(struct kgsl_device *device, unsigned int init_ram)
 	mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_ON);
 	return 0;
+
+error_mmu_stop:
+	kgsl_mmu_stop(device);
 error_clk_off:
 	z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_OFF);
 	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_OFF);
-error_mmu_stop:
-	kgsl_mmu_stop(device);
 	return status;
 }
 
@@ -832,8 +786,8 @@ static void _z180_regread(struct kgsl_device *device, unsigned int offsetwords,
 {
 	if ((offsetwords >= ADDR_MH_ARBITER_CONFIG &&
 	     offsetwords <= ADDR_MH_AXI_HALT_CONTROL) ||
-	    (offsetwords >= ADDR_MH_MMU_CONFIG &&
-	     offsetwords <= ADDR_MH_MMU_MPU_END)) {
+	    (offsetwords >= MH_MMU_CONFIG &&
+	     offsetwords <= MH_MMU_MPU_END)) {
 		_z180_regread_mmu(device, offsetwords, value);
 	} else {
 		_z180_regread_simple(device, offsetwords, value);
@@ -845,10 +799,9 @@ static void _z180_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 {
 	if ((offsetwords >= ADDR_MH_ARBITER_CONFIG &&
 	     offsetwords <= ADDR_MH_CLNT_INTF_CTRL_CONFIG2) ||
-	    (offsetwords >= ADDR_MH_MMU_CONFIG &&
-	     offsetwords <= ADDR_MH_MMU_MPU_END)) {
+	    (offsetwords >= MH_MMU_CONFIG &&
+	     offsetwords <= MH_MMU_MPU_END)) {
 		_z180_regwrite_mmu(device, offsetwords, value);
-
 	} else {
 		_z180_regwrite_simple(device, offsetwords, value);
 	}

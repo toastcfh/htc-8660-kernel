@@ -286,17 +286,6 @@ int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp)
 }
 EXPORT_SYMBOL(kgsl_check_timestamp);
 
-int kgsl_setstate(struct kgsl_device *device, uint32_t flags)
-{
-	int status = 0;
-
-	if (flags && device->ftbl->setstate)
-		status = device->ftbl->setstate(device, flags);
-
-	return status;
-}
-EXPORT_SYMBOL(kgsl_setstate);
-
 static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 {
 	int status = -EINVAL;

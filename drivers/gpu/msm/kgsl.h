@@ -165,7 +165,6 @@ uint8_t *kgsl_gpuaddr_to_vaddr(const struct kgsl_memdesc *memdesc,
 struct kgsl_mem_entry *kgsl_sharedmem_find_region(
 	struct kgsl_process_private *private, unsigned int gpuaddr,
 	size_t size);
-int kgsl_setstate(struct kgsl_device *device, uint32_t flags);
 
 static inline void kgsl_regread(struct kgsl_device *device,
 				unsigned int offsetwords,
