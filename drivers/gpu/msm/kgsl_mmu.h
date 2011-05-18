@@ -246,7 +246,7 @@ static inline int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize,
 static inline int kgsl_mmu_map_global(struct kgsl_pagetable *pagetable,
 	struct kgsl_memdesc *memdesc, unsigned int protflags)
 {
-	/* gpuaddr is the same that gets passed in */
+	memdesc->gpuaddr = memdesc->physaddr;
 	return 0;
 }
 

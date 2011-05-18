@@ -832,7 +832,7 @@ int kgsl_mmu_init(struct kgsl_device *device)
 		/* allocate memory used for completing r/w operations that
 		 * cannot be mapped by the MMU
 		 */
-		status = kgsl_allocate_contig(&mmu->dummyspace, 64);
+		status = kgsl_allocate_contiguous(&mmu->dummyspace, 64);
 		if (!status)
 			kgsl_sharedmem_set(&mmu->dummyspace, 0, 0,
 					   mmu->dummyspace.size);

@@ -1375,8 +1375,8 @@ create_gpustate_shadow(struct kgsl_device *device,
 	int result;
 
 	/* Allocate vmalloc memory to store the gpustate */
-	result = kgsl_sharedmem_vmalloc(&drawctxt->gpustate,
-					drawctxt->pagetable, CONTEXT_SIZE);
+	result = kgsl_allocate(&drawctxt->gpustate,
+		drawctxt->pagetable, CONTEXT_SIZE);
 
 	if (result)
 		return result;
@@ -1416,10 +1416,8 @@ create_gmem_shadow(struct adreno_device *adreno_dev,
 			adreno_dev->gmemspace.sizebytes);
 	ctx->gmem_base = adreno_dev->gmemspace.gpu_base;
 
-	result = kgsl_sharedmem_vmalloc(
-				&drawctxt->context_gmem_shadow.gmemshadow,
-			       drawctxt->pagetable,
-			       drawctxt->context_gmem_shadow.size);
+	result = kgsl_allocate(&drawctxt->context_gmem_shadow.gmemshadow,
+		drawctxt->pagetable, drawctxt->context_gmem_shadow.size);
 
 	if (result)
 		return result;
