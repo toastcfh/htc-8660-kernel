@@ -87,20 +87,6 @@ static struct adreno_device device_3d0 = {
 			   all pages. */
 			.mpu_base = 0x00000000,
 			.mpu_range =  0xFFFFF000,
-			.reg = {
-				.config = REG_MH_MMU_CONFIG,
-				.mpu_base = REG_MH_MMU_MPU_BASE,
-				.mpu_end = REG_MH_MMU_MPU_END,
-				.va_range = REG_MH_MMU_VA_RANGE,
-				.pt_page = REG_MH_MMU_PT_BASE,
-				.page_fault = REG_MH_MMU_PAGE_FAULT,
-				.tran_error = REG_MH_MMU_TRAN_ERROR,
-				.invalidate = REG_MH_MMU_INVALIDATE,
-				.interrupt_mask = REG_MH_INTERRUPT_MASK,
-				.interrupt_status = REG_MH_INTERRUPT_STATUS,
-				.interrupt_clear = REG_MH_INTERRUPT_CLEAR,
-				.axi_error = REG_MH_AXI_ERROR,
-			},
 		},
 		.pwrctrl = {
 			.pwr_rail = PWR_RAIL_GRP_CLK,
@@ -320,7 +306,7 @@ error:
 	return result;
 }
 
-static int adreno_setstate(struct kgsl_device *device, uint32_t flags)
+static void adreno_setstate(struct kgsl_device *device, uint32_t flags)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	unsigned int link[32];
@@ -328,12 +314,13 @@ static int adreno_setstate(struct kgsl_device *device, uint32_t flags)
 	int sizedwords = 0;
 	unsigned int mh_mmu_invalidate = 0x00000003; /*invalidate all and tc */
 
-#ifndef CONFIG_MSM_KGSL_MMU
-	return 0;
-#endif
-	/* if possible, set via command stream,
-	* otherwise set via direct register writes
-	*/
+	if (!kgsl_mmu_enabled() || !flags)
+		return;
+
+	/* If possible, then set the state via the command stream to avoid
+	   a CPU idle.  Otherwise, use the default setstate which uses register
+	   writes */
+
 	if (adreno_dev->drawctxt_active) {
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
 			/* wait for graphics pipe to be idle */
@@ -341,7 +328,7 @@ static int adreno_setstate(struct kgsl_device *device, uint32_t flags)
 			*cmds++ = 0x00000000;
 
 			/* set page table base */
-			*cmds++ = pm4_type0_packet(REG_MH_MMU_PT_BASE, 1);
+			*cmds++ = pm4_type0_packet(MH_MMU_PT_BASE, 1);
 			*cmds++ = device->mmu.hwpagetable->base.gpuaddr;
 			sizedwords += 4;
 		}
@@ -353,7 +340,7 @@ static int adreno_setstate(struct kgsl_device *device, uint32_t flags)
 				*cmds++ = 0x00000000;
 				sizedwords += 2;
 			}
-			*cmds++ = pm4_type0_packet(REG_MH_MMU_INVALIDATE, 1);
+			*cmds++ = pm4_type0_packet(MH_MMU_INVALIDATE, 1);
 			*cmds++ = mh_mmu_invalidate;
 			sizedwords += 2;
 		}
@@ -406,20 +393,8 @@ static int adreno_setstate(struct kgsl_device *device, uint32_t flags)
 
 		adreno_ringbuffer_issuecmds(device, KGSL_CMD_FLAGS_PMODE,
 					&link[0], sizedwords);
-	} else {
-		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
-			adreno_idle(device, KGSL_TIMEOUT_DEFAULT);
-			adreno_regwrite(device, REG_MH_MMU_PT_BASE,
-				     device->mmu.hwpagetable->base.gpuaddr);
-		}
-
-		if (flags & KGSL_MMUFLAGS_TLBFLUSH) {
-			adreno_regwrite(device, REG_MH_MMU_INVALIDATE,
-					   mh_mmu_invalidate);
-		}
-	}
-
-	return 0;
+	} else
+		kgsl_default_setstate(device, flags);
 }
 
 static unsigned int

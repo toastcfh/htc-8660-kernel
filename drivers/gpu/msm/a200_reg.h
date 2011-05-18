@@ -271,18 +271,6 @@ union reg_cp_rb_cntl {
 #define MH_ARBITER_CONFIG__RB_CLNT_ENABLE__SHIFT           0x00000019
 #define MH_ARBITER_CONFIG__PA_CLNT_ENABLE__SHIFT           0x0000001a
 
-#define MH_MMU_CONFIG__RB_W_CLNT_BEHAVIOR__SHIFT           0x00000004
-#define MH_MMU_CONFIG__CP_W_CLNT_BEHAVIOR__SHIFT           0x00000006
-#define MH_MMU_CONFIG__CP_R0_CLNT_BEHAVIOR__SHIFT          0x00000008
-#define MH_MMU_CONFIG__CP_R1_CLNT_BEHAVIOR__SHIFT          0x0000000a
-#define MH_MMU_CONFIG__CP_R2_CLNT_BEHAVIOR__SHIFT          0x0000000c
-#define MH_MMU_CONFIG__CP_R3_CLNT_BEHAVIOR__SHIFT          0x0000000e
-#define MH_MMU_CONFIG__CP_R4_CLNT_BEHAVIOR__SHIFT          0x00000010
-#define MH_MMU_CONFIG__VGT_R0_CLNT_BEHAVIOR__SHIFT         0x00000012
-#define MH_MMU_CONFIG__VGT_R1_CLNT_BEHAVIOR__SHIFT         0x00000014
-#define MH_MMU_CONFIG__TC_R_CLNT_BEHAVIOR__SHIFT           0x00000016
-#define MH_MMU_CONFIG__PA_W_CLNT_BEHAVIOR__SHIFT           0x00000018
-
 #define CP_RB_CNTL__RB_BUFSZ__SHIFT                        0x00000000
 #define CP_RB_CNTL__RB_BLKSZ__SHIFT                        0x00000008
 #define CP_RB_CNTL__RB_POLL_EN__SHIFT                      0x00000014
@@ -336,17 +324,6 @@ union reg_cp_rb_cntl {
 #define REG_MASTER_INT_SIGNAL            0x03B7
 
 #define REG_MH_ARBITER_CONFIG            0x0A40
-#define REG_MH_INTERRUPT_CLEAR           0x0A44
-#define REG_MH_INTERRUPT_MASK            0x0A42
-#define REG_MH_INTERRUPT_STATUS          0x0A43
-#define REG_MH_MMU_CONFIG                0x0040
-#define REG_MH_MMU_INVALIDATE            0x0045
-#define REG_MH_MMU_MPU_BASE              0x0046
-#define REG_MH_MMU_MPU_END               0x0047
-#define REG_MH_MMU_PAGE_FAULT            0x0043
-#define REG_MH_MMU_PT_BASE               0x0042
-#define REG_MH_MMU_TRAN_ERROR            0x0044
-#define REG_MH_MMU_VA_RANGE              0x0041
 #define REG_MH_CLNT_INTF_CTRL_CONFIG1    0x0A54
 #define REG_MH_CLNT_INTF_CTRL_CONFIG2    0x0A55
 
@@ -438,7 +415,6 @@ union reg_cp_rb_cntl {
 #define REG_SQ_CONSTANT_0                0x4000
 #define REG_SQ_FETCH_0                   0x4800
 
-#define REG_MH_AXI_ERROR                 0xA45
 #define REG_MH_DEBUG_CTRL                0xA4E
 #define REG_MH_DEBUG_DATA                0xA4F
 #define REG_COHER_BASE_PM4               0xA2A

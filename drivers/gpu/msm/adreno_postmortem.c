@@ -624,30 +624,30 @@ static int adreno_dump(struct kgsl_device *device)
 		"COHER:  SIZE_PM4   = %08X | BASE_PM4 = %08X | STATUS_PM4"
 		" = %08X\n", r1, r2, r3);
 
-	kgsl_regread(device, REG_MH_AXI_ERROR, &r1);
+	kgsl_regread(device, MH_AXI_ERROR, &r1);
 	KGSL_LOG_DUMP(device, "MH:     AXI_ERROR  = %08X\n", r1);
 
-	kgsl_regread(device, REG_MH_MMU_PAGE_FAULT, &r1);
-	kgsl_regread(device, REG_MH_MMU_CONFIG, &r2);
-	kgsl_regread(device, REG_MH_MMU_MPU_BASE, &r3);
+	kgsl_regread(device, MH_MMU_PAGE_FAULT, &r1);
+	kgsl_regread(device, MH_MMU_CONFIG, &r2);
+	kgsl_regread(device, MH_MMU_MPU_BASE, &r3);
 	KGSL_LOG_DUMP(device,
 		"MH_MMU: PAGE_FAULT = %08X | CONFIG   = %08X | MPU_BASE ="
 		" %08X\n", r1, r2, r3);
 
-	kgsl_regread(device, REG_MH_MMU_MPU_END, &r1);
-	kgsl_regread(device, REG_MH_MMU_VA_RANGE, &r2);
-	kgsl_regread(device, REG_MH_MMU_PT_BASE, &pt_base);
+	kgsl_regread(device, MH_MMU_MPU_END, &r1);
+	kgsl_regread(device, MH_MMU_VA_RANGE, &r2);
+	kgsl_regread(device, MH_MMU_PT_BASE, &pt_base);
 	KGSL_LOG_DUMP(device,
 		"        MPU_END    = %08X | VA_RANGE = %08X | PT_BASE  ="
 		" %08X\n", r1, r2, pt_base);
 
 	KGSL_LOG_DUMP(device, "PAGETABLE SIZE: %08X ", KGSL_PAGETABLE_SIZE);
 
-	kgsl_regread(device, REG_MH_MMU_TRAN_ERROR, &r1);
+	kgsl_regread(device, MH_MMU_TRAN_ERROR, &r1);
 	KGSL_LOG_DUMP(device, "        TRAN_ERROR = %08X\n", r1);
 
-	kgsl_regread(device, REG_MH_INTERRUPT_MASK, &r1);
-	kgsl_regread(device, REG_MH_INTERRUPT_STATUS, &r2);
+	kgsl_regread(device, MH_INTERRUPT_MASK, &r1);
+	kgsl_regread(device, MH_INTERRUPT_STATUS, &r2);
 	KGSL_LOG_DUMP(device,
 		"MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
 
