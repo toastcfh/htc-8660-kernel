@@ -14,6 +14,7 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <linux/ioctl.h>
+#include <linux/sched.h>
 
 #include <mach/socinfo.h>
 
