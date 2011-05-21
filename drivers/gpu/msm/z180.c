@@ -661,13 +661,6 @@ static unsigned int z180_isidle(struct kgsl_device *device)
 	return status;
 }
 
-static int z180_resume_context(struct kgsl_device *device)
-{
-	/* Context is in the pre-amble, automatically restored. */
-
-	return 0;
-}
-
 static int z180_suspend_context(struct kgsl_device *device)
 {
 	struct z180_device *z180_dev = Z180_DEVICE(device);
@@ -905,7 +898,6 @@ static const struct kgsl_functable z180_functable = {
 	.idle = z180_idle,
 	.isidle = z180_isidle,
 	.suspend_context = z180_suspend_context,
-	.resume_context = z180_resume_context,
 	.start = z180_start,
 	.stop = z180_stop,
 	.getproperty = z180_getproperty,

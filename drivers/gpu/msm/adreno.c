@@ -933,34 +933,14 @@ static unsigned int adreno_isidle(struct kgsl_device *device)
 	return status;
 }
 
-
-/******************************************************************/
-/* Caller must hold the driver mutex. */
-static int adreno_resume_context(struct kgsl_device *device)
-{
-	int status = 0;
-	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
-
-	if (device->pwrctrl.suspended_ctxt != NULL) {
-		adreno_drawctxt_switch(adreno_dev,
-				     device->pwrctrl.suspended_ctxt, 0);
-		status = adreno_idle(device, 0);
-
-	}
-
-	return status;
-}
-
-/******************************************************************/
 /* Caller must hold the device mutex. */
 static int adreno_suspend_context(struct kgsl_device *device)
 {
 	int status = 0;
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 
-	/* save ctxt ptr and switch to NULL ctxt */
-	device->pwrctrl.suspended_ctxt = adreno_dev->drawctxt_active;
-	if (device->pwrctrl.suspended_ctxt != NULL) {
+	/* switch to NULL ctxt */
+	if (adreno_dev->drawctxt_active != NULL) {
 		adreno_drawctxt_switch(adreno_dev, NULL, 0);
 		status = adreno_idle(device, KGSL_TIMEOUT_DEFAULT);
 	}
@@ -1307,7 +1287,6 @@ static const struct kgsl_functable adreno_functable = {
 	.idle = adreno_idle,
 	.isidle = adreno_isidle,
 	.suspend_context = adreno_suspend_context,
-	.resume_context = adreno_resume_context,
 	.start = adreno_start,
 	.stop = adreno_stop,
 	.getproperty = adreno_getproperty,
