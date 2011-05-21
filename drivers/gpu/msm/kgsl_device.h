@@ -88,7 +88,6 @@ struct kgsl_functable {
 	int (*idle) (struct kgsl_device *device, unsigned int timeout);
 	unsigned int (*isidle) (struct kgsl_device *device);
 	int (*suspend_context) (struct kgsl_device *device);
-	int (*resume_context) (struct kgsl_device *device);
 	int (*start) (struct kgsl_device *device, unsigned int init_ram);
 	int (*stop) (struct kgsl_device *device);
 	int (*getproperty) (struct kgsl_device *device,

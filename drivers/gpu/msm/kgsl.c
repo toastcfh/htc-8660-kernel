@@ -370,7 +370,6 @@ static int kgsl_resume_device(struct kgsl_device *device)
 			device->state = KGSL_STATE_INIT;
 			goto end;
 		}
-		status = device->ftbl->resume_context(device);
 		complete_all(&device->hwaccess_gate);
 	}
 	device->requested_state = KGSL_STATE_NONE;
