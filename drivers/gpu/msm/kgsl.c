@@ -59,13 +59,14 @@ kgsl_mem_entry_destroy(struct kref *kref)
 
 	kgsl_sharedmem_free(&entry->memdesc);
 
-	if (entry->memtype == KGSL_VMALLOC_MEMORY)
-		entry->priv->stats.vmalloc -= size;
-	else {
+	if (entry->memtype == KGSL_USER_MEMORY)
+		entry->priv->stats.user -= size;
+	else if (entry->memtype == KGSL_MAPPED_MEMORY) {
 		if (entry->file_ptr)
 			fput(entry->file_ptr);
 
-		entry->priv->stats.exmem -= size;
+		kgsl_driver.stats.mapped -= size;
+		entry->priv->stats.mapped -= size;
 	}
 
 	kfree(entry);
@@ -493,9 +494,9 @@ kgsl_put_process_private(struct kgsl_device *device,
 		goto unlock;
 
 	KGSL_MEM_INFO(device,
-			"Memory usage: vmalloc (%d/%d) exmem (%d/%d)\n",
-			private->stats.vmalloc, private->stats.vmalloc_max,
-			private->stats.exmem, private->stats.exmem_max);
+			"Memory usage: user (%d/%d) mapped (%d/%d)\n",
+			private->stats.user, private->stats.user_max,
+			private->stats.mapped, private->stats.mapped_max);
 
 	kgsl_process_uninit_sysfs(private);
 
@@ -1120,13 +1121,13 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 
 	param->gpuaddr = entry->memdesc.gpuaddr;
 
-	entry->memtype = KGSL_VMALLOC_MEMORY;
+	entry->memtype = KGSL_USER_MEMORY;
 
 	kgsl_mem_entry_attach_process(entry, private);
 
 	/* Process specific statistics */
-	KGSL_STATS_ADD(len, private->stats.vmalloc,
-		       private->stats.vmalloc_max);
+	KGSL_STATS_ADD(len, private->stats.user,
+		       private->stats.user_max);
 
 	kgsl_check_idle(dev_priv->device);
 	return 0;
@@ -1413,11 +1414,14 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 
 	param->gpuaddr = entry->memdesc.gpuaddr;
 
-	entry->memtype = KGSL_EXTERNAL_MEMORY;
+	entry->memtype = KGSL_MAPPED_MEMORY;
+
+	KGSL_STATS_ADD(param->len, kgsl_driver.stats.mapped,
+		       kgsl_driver.stats.mapped_max);
 
 	/* Statistics */
-	KGSL_STATS_ADD(param->len, private->stats.exmem,
-		       private->stats.exmem_max);
+	KGSL_STATS_ADD(param->len, private->stats.mapped,
+		       private->stats.mapped_max);
 
 	kgsl_mem_entry_attach_process(entry, private);
 
@@ -1493,8 +1497,12 @@ kgsl_ioctl_gpumem_alloc(struct kgsl_device_private *dev_priv,
 		param->size, param->flags);
 
 	if (result == 0) {
+		entry->memtype = KGSL_USER_MEMORY;
 		kgsl_mem_entry_attach_process(entry, private);
 		param->gpuaddr = entry->memdesc.gpuaddr;
+
+		KGSL_STATS_ADD(entry->memdesc.size, private->stats.user,
+		       private->stats.user_max);
 	} else
 		kfree(entry);
 
