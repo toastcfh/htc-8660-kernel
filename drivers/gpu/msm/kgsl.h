@@ -117,8 +117,8 @@ struct kgsl_driver {
 	struct list_head process_list;
 	/* Global list of pagetables */
 	struct list_head pagetable_list;
-	/* Mutex for accessing the pagetable list */
-	struct mutex pt_mutex;
+	/* Spinlock for accessing the pagetable list */
+	spinlock_t ptlock;
 	/* Mutex for accessing the process list */
 	struct mutex process_mutex;
 

@@ -107,7 +107,7 @@ struct kgsl_tlbflushfilter {
 
 struct kgsl_pagetable {
 	spinlock_t lock;
-	unsigned int   refcnt;
+	struct kref refcount;
 	struct kgsl_memdesc  base;
 	uint32_t      va_base;
 	unsigned int   va_range;
