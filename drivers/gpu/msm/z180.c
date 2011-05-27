@@ -959,9 +959,11 @@ static long z180_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
-static unsigned int z180_idle_calc(struct kgsl_device *device)
+static void z180_power_stats(struct kgsl_device *device,
+			    struct kgsl_power_stats *stats)
 {
-	return device->pwrctrl.time;
+	stats->total_time = 0;
+	stats->busy_time = 0;
 }
 
 static const struct kgsl_functable z180_functable = {
@@ -983,7 +985,7 @@ static const struct kgsl_functable z180_functable = {
 	.ioctl = z180_ioctl,
 	.setup_pt = z180_setup_pt,
 	.cleanup_pt = z180_cleanup_pt,
-	.idle_calc = z180_idle_calc,
+	.power_stats = z180_power_stats,
 	/* Optional functions */
 	.setstate = z180_setstate,
 	.drawctxt_create = NULL,

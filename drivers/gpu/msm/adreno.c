@@ -1243,15 +1243,16 @@ static inline s64 adreno_ticks_to_us(u32 ticks, u32 gpu_freq)
 	return ticks / gpu_freq;
 }
 
-static unsigned int adreno_idle_calc(struct kgsl_device *device)
+static void adreno_power_stats(struct kgsl_device *device,
+				struct kgsl_power_stats *stats)
 {
-	unsigned int ret, reg;
+	unsigned int reg;
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	/* In order to calculate idle you have to have run the algorithm *
 	 * at least once to get a start time. */
 	if (pwr->time != 0) {
-		s64 total_time, busy_time, tmp;
+		s64 tmp;
 		/* Stop the performance moniter and read the current *
 		 * busy cycles. */
 		adreno_regwrite(device,
@@ -1260,19 +1261,20 @@ static unsigned int adreno_idle_calc(struct kgsl_device *device)
 			REG_PERF_STATE_FREEZE);
 		adreno_regread(device, REG_RBBM_PERFCOUNTER1_LO, &reg);
 		tmp = ktime_to_us(ktime_get());
-		total_time = tmp - pwr->time;
+		stats->total_time = tmp - pwr->time;
 		pwr->time = tmp;
-		busy_time = adreno_ticks_to_us(reg, device->pwrctrl.
+		stats->busy_time = adreno_ticks_to_us(reg, device->pwrctrl.
 				pwrlevels[device->pwrctrl.active_pwrlevel].
 				gpu_freq);
-		ret = total_time - busy_time;
+
 		adreno_regwrite(device,
 			REG_CP_PERFMON_CNTL,
 			REG_PERF_MODE_CNT |
 			REG_PERF_STATE_RESET);
 	} else {
+		stats->total_time = 0;
+		stats->busy_time = 0;
 		pwr->time = ktime_to_us(ktime_get());
-		ret = 0;
 	}
 
 	/* re-enable the performance moniters */
@@ -1282,7 +1284,6 @@ static unsigned int adreno_idle_calc(struct kgsl_device *device)
 	adreno_regwrite(device,
 		REG_CP_PERFMON_CNTL,
 		REG_PERF_MODE_CNT | REG_PERF_STATE_ENABLE);
-	return ret;
 }
 
 static const struct kgsl_functable adreno_functable = {
@@ -1304,7 +1305,7 @@ static const struct kgsl_functable adreno_functable = {
 	.ioctl = adreno_ioctl,
 	.setup_pt = adreno_setup_pt,
 	.cleanup_pt = adreno_cleanup_pt,
-	.idle_calc = adreno_idle_calc,
+	.power_stats = adreno_power_stats,
 	/* Optional functions */
 	.setstate = adreno_setstate,
 	.drawctxt_create = adreno_drawctxt_create,
