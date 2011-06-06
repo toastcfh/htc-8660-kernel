@@ -239,49 +239,29 @@ static int kgsl_pwrctrl_scaling_governor_show(struct device *dev,
 		return snprintf(buf, 13, "performance\n");
 }
 
-static struct device_attribute gpuclk_attr = {
-	.attr = { .name = "gpuclk", .mode = 0644, },
-	.show = kgsl_pwrctrl_gpuclk_show,
-	.store = kgsl_pwrctrl_gpuclk_store,
-};
+DEVICE_ATTR(gpuclk, 0644, kgsl_pwrctrl_gpuclk_show, kgsl_pwrctrl_gpuclk_store);
+DEVICE_ATTR(pwrnap, 0644, kgsl_pwrctrl_pwrnap_show, kgsl_pwrctrl_pwrnap_store);
+DEVICE_ATTR(idle_timer, 0644, kgsl_pwrctrl_idle_timer_show,
+	kgsl_pwrctrl_idle_timer_store);
+DEVICE_ATTR(scaling_governor, 0644, kgsl_pwrctrl_scaling_governor_show,
+	kgsl_pwrctrl_scaling_governor_store);
 
-static struct device_attribute pwrnap_attr = {
-	.attr = { .name = "pwrnap", .mode = 0644, },
-	.show = kgsl_pwrctrl_pwrnap_show,
-	.store = kgsl_pwrctrl_pwrnap_store,
-};
-
-static struct device_attribute idle_timer_attr = {
-	.attr = { .name = "idle_timer", .mode = 0644, },
-	.show = kgsl_pwrctrl_idle_timer_show,
-	.store = kgsl_pwrctrl_idle_timer_store,
-};
-
-static struct device_attribute scaling_governor_attr = {
-	.attr = { .name = "scaling_governor", .mode = 0644, },
-	.show = kgsl_pwrctrl_scaling_governor_show,
-	.store = kgsl_pwrctrl_scaling_governor_store,
+static const struct device_attribute *pwrctrl_attr_list[] = {
+	&dev_attr_gpuclk,
+	&dev_attr_pwrnap,
+	&dev_attr_idle_timer,
+	&dev_attr_scaling_governor,
+	NULL
 };
 
 int kgsl_pwrctrl_init_sysfs(struct kgsl_device *device)
 {
-	int ret = 0;
-	ret = device_create_file(device->dev, &pwrnap_attr);
-	if (ret == 0)
-		ret = device_create_file(device->dev, &gpuclk_attr);
-	if (ret == 0)
-		ret = device_create_file(device->dev, &idle_timer_attr);
-	if (ret == 0)
-		ret = device_create_file(device->dev, &scaling_governor_attr);
-	return ret;
+	return kgsl_create_device_sysfs_files(device->dev, pwrctrl_attr_list);
 }
 
 void kgsl_pwrctrl_uninit_sysfs(struct kgsl_device *device)
 {
-	device_remove_file(device->dev, &gpuclk_attr);
-	device_remove_file(device->dev, &pwrnap_attr);
-	device_remove_file(device->dev, &idle_timer_attr);
-	device_remove_file(device->dev, &scaling_governor_attr);
+	kgsl_remove_device_sysfs_files(device->dev, pwrctrl_attr_list);
 }
 
 static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
