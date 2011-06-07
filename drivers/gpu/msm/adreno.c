@@ -17,6 +17,7 @@
 #include <mach/socinfo.h>
 
 #include "kgsl.h"
+#include "kgsl_pwrscale.h"
 #include "kgsl_cffdump.h"
 
 #include "adreno.h"

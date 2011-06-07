@@ -58,8 +58,8 @@ static inline void kgsl_pwrctrl_tz_reset(void)
 	__secure_tz_entry(TZ_RESET_ID, 0);
 }
 
-static void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
-						unsigned int new_level)
+void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
+				unsigned int new_level)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	if (new_level < (pwr->num_pwrlevels - 1) &&
@@ -79,6 +79,7 @@ static void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 					  pwr->active_pwrlevel);
 	}
 }
+EXPORT_SYMBOL(kgsl_pwrctrl_pwrlevel_change);
 
 static int kgsl_pwrctrl_gpuclk_store(struct device *dev,
 				     struct device_attribute *attr,
