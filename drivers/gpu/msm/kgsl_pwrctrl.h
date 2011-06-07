@@ -69,8 +69,6 @@ struct kgsl_pwrctrl {
 	const char *src_clk_name;
 	bool pwrrail_first;
 	s64 time;
-	unsigned int no_switch_cnt;
-	unsigned int idle_pass;
 };
 
 void kgsl_pwrctrl_clk(struct kgsl_device *device, unsigned int pwrflag);

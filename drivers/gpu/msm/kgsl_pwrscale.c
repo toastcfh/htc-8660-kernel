@@ -38,6 +38,7 @@ __ATTR(_name, _mode, _show, _store)
 /* Master list of available policies */
 
 static struct kgsl_pwrscale_policy *kgsl_pwrscale_policies[] = {
+	&kgsl_pwrscale_policy_tz,
 	NULL
 };
 
