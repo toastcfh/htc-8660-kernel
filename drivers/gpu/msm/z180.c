@@ -86,6 +86,11 @@
 #define Z180_TIMESTAMP_EPSILON 20000
 #define Z180_IDLE_COUNT_MAX 1000000
 
+enum z180_cmdwindow_type {
+	Z180_CMDWINDOW_2D = 0x00000000,
+	Z180_CMDWINDOW_MMU = 0x00000002,
+};
+
 #define Z180_CMDWINDOW_TARGET_MASK		0x000000FF
 #define Z180_CMDWINDOW_ADDR_MASK		0x00FFFF00
 #define Z180_CMDWINDOW_TARGET_SHIFT		0
@@ -102,8 +107,7 @@ static void z180_regread(struct kgsl_device *device,
 static void z180_regwrite(struct kgsl_device *device,
 				unsigned int offsetwords,
 				unsigned int value);
-static int z180_cmdwindow_write(struct kgsl_device *device,
-				enum kgsl_cmdwindow_type target,
+static void z180_cmdwindow_write(struct kgsl_device *device,
 				unsigned int addr,
 				unsigned int data);
 static void z180_regread_isr(struct kgsl_device *device,
@@ -316,10 +320,9 @@ static void addcmd(struct z180_ringbuffer *rb, unsigned int index,
 	*p++ = ADDR_VGV3_LAST << 24;
 }
 
-static int z180_cmdstream_start(struct kgsl_device *device)
+static void z180_cmdstream_start(struct kgsl_device *device)
 {
 	struct z180_device *z180_dev = Z180_DEVICE(device);
-	int result;
 	unsigned int cmd = VGV3_NEXTCMD_JUMP << VGV3_NEXTCMD_NEXTCMD_FSHIFT;
 
 	z180_dev->timestamp = 0;
@@ -327,43 +330,22 @@ static int z180_cmdstream_start(struct kgsl_device *device)
 
 	addmarker(&z180_dev->ringbuffer, 0);
 
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_MODE, 4);
-	if (result != 0)
-		return result;
+	z180_cmdwindow_write(device, ADDR_VGV3_MODE, 4);
 
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_NEXTADDR,
+	z180_cmdwindow_write(device, ADDR_VGV3_NEXTADDR,
 			z180_dev->ringbuffer.cmdbufdesc.gpuaddr);
-	if (result != 0)
-		return result;
 
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_NEXTCMD, cmd | 5);
-	if (result != 0)
-		return result;
+	z180_cmdwindow_write(device, ADDR_VGV3_NEXTCMD, cmd | 5);
 
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_WRITEADDR, device->memstore.gpuaddr);
-
-	if (result != 0)
-		return result;
+	z180_cmdwindow_write(device, ADDR_VGV3_WRITEADDR,
+			device->memstore.gpuaddr);
 
 	cmd = (int)(((1) & VGV3_CONTROL_MARKADD_FMASK)
 			<< VGV3_CONTROL_MARKADD_FSHIFT);
 
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_CONTROL, cmd);
+	z180_cmdwindow_write(device, ADDR_VGV3_CONTROL, cmd);
 
-	if (result != 0)
-		return result;
-
-	result = z180_cmdwindow_write(device, KGSL_CMDWINDOW_2D,
-			ADDR_VGV3_CONTROL, 0);
-	if (result != 0)
-		return result;
-
-	return result;
+	z180_cmdwindow_write(device, ADDR_VGV3_CONTROL, 0);
 }
 
 static int room_in_rb(struct z180_device *device)
@@ -483,10 +465,8 @@ z180_cmdstream_issueibcmds(struct kgsl_device_private *dev_priv,
 	cmd = (int)(((2) & VGV3_CONTROL_MARKADD_FMASK)
 		<< VGV3_CONTROL_MARKADD_FSHIFT);
 
-	z180_cmdwindow_write(device,
-				KGSL_CMDWINDOW_2D, ADDR_VGV3_CONTROL, cmd);
-	z180_cmdwindow_write(device,
-				KGSL_CMDWINDOW_2D, ADDR_VGV3_CONTROL, 0);
+	z180_cmdwindow_write(device, ADDR_VGV3_CONTROL, cmd);
+	z180_cmdwindow_write(device, ADDR_VGV3_CONTROL, 0);
 error:
 	return result;
 }
@@ -578,16 +558,12 @@ static int z180_start(struct kgsl_device *device, unsigned int init_ram)
 	if (status)
 		goto error_clk_off;
 
-	status = z180_cmdstream_start(device);
-	if (status)
-		goto error_mmu_stop;
+	z180_cmdstream_start(device);
 
 	mod_timer(&device->idle_timer, jiffies + FIRST_TIMEOUT);
 	kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_ON);
 	return 0;
 
-error_mmu_stop:
-	kgsl_mmu_stop(device);
 error_clk_off:
 	z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0);
 	kgsl_pwrctrl_axi(device, KGSL_PWRFLAGS_AXI_OFF);
@@ -766,7 +742,7 @@ static void _z180_regwrite_mmu(struct kgsl_device *device,
 	unsigned int cmdwinaddr;
 	unsigned long flags;
 
-	cmdwinaddr = ((KGSL_CMDWINDOW_MMU << Z180_CMDWINDOW_TARGET_SHIFT) &
+	cmdwinaddr = ((Z180_CMDWINDOW_MMU << Z180_CMDWINDOW_TARGET_SHIFT) &
 			Z180_CMDWINDOW_TARGET_MASK);
 	cmdwinaddr |= ((offsetwords << Z180_CMDWINDOW_ADDR_SHIFT) &
 			Z180_CMDWINDOW_ADDR_MASK);
@@ -838,33 +814,18 @@ static void z180_regwrite_isr(struct kgsl_device *device,
 	_z180_regwrite(device, offsetwords, value);
 }
 
-static int z180_cmdwindow_write(struct kgsl_device *device,
-		enum kgsl_cmdwindow_type target, unsigned int addr,
-		unsigned int data)
+static void z180_cmdwindow_write(struct kgsl_device *device,
+		unsigned int addr, unsigned int data)
 {
 	unsigned int cmdwinaddr;
-	unsigned int cmdstream;
 
-	if (target < KGSL_CMDWINDOW_MIN ||
-		target > KGSL_CMDWINDOW_MAX) {
-		KGSL_DRV_ERR(device, "invalid target\n");
-		return -EINVAL;
-	}
-
-	if (target == KGSL_CMDWINDOW_MMU)
-		cmdstream = ADDR_VGC_MMUCOMMANDSTREAM;
-	else
-		cmdstream = ADDR_VGC_COMMANDSTREAM;
-
-	cmdwinaddr = ((target << Z180_CMDWINDOW_TARGET_SHIFT) &
+	cmdwinaddr = ((Z180_CMDWINDOW_2D << Z180_CMDWINDOW_TARGET_SHIFT) &
 			Z180_CMDWINDOW_TARGET_MASK);
 	cmdwinaddr |= ((addr << Z180_CMDWINDOW_ADDR_SHIFT) &
 			Z180_CMDWINDOW_ADDR_MASK);
 
-	z180_regwrite(device, cmdstream >> 2, cmdwinaddr);
-	z180_regwrite(device, cmdstream >> 2, data);
-
-	return 0;
+	z180_regwrite(device, ADDR_VGC_COMMANDSTREAM >> 2, cmdwinaddr);
+	z180_regwrite(device, ADDR_VGC_COMMANDSTREAM >> 2, data);
 }
 
 static unsigned int z180_readtimestamp(struct kgsl_device *device,
@@ -911,18 +872,6 @@ static int z180_wait(struct kgsl_device *device,
 	return status;
 }
 
-static long
-z180_ioctl_cmdwindow_write(struct kgsl_device_private *dev_priv,
-					   void *data)
-{
-	struct kgsl_cmdwindow_write *param = data;
-
-	return z180_cmdwindow_write(dev_priv->device,
-					param->target,
-					param->addr,
-					param->data);
-}
-
 static int
 z180_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context)
@@ -938,25 +887,6 @@ z180_drawctxt_destroy(struct kgsl_device *device,
 	}
 
 	return 0;
-}
-
-static long z180_ioctl(struct kgsl_device_private *dev_priv,
-			   unsigned int cmd, void *data)
-{
-	int result = 0;
-
-	switch (cmd) {
-	case IOCTL_KGSL_CMDWINDOW_WRITE:
-		result = z180_ioctl_cmdwindow_write(dev_priv, data);
-		break;
-	default:
-		KGSL_DRV_INFO(dev_priv->device,
-			"invalid ioctl code %08x\n", cmd);
-		result = -EINVAL;
-		break;
-	}
-	return result;
-
 }
 
 static void z180_power_stats(struct kgsl_device *device,
@@ -982,7 +912,6 @@ static const struct kgsl_functable z180_functable = {
 	.waittimestamp = z180_waittimestamp,
 	.readtimestamp = z180_readtimestamp,
 	.issueibcmds = z180_cmdstream_issueibcmds,
-	.ioctl = z180_ioctl,
 	.setup_pt = z180_setup_pt,
 	.cleanup_pt = z180_cleanup_pt,
 	.power_stats = z180_power_stats,
@@ -990,6 +919,7 @@ static const struct kgsl_functable z180_functable = {
 	.setstate = z180_setstate,
 	.drawctxt_create = NULL,
 	.drawctxt_destroy = z180_drawctxt_destroy,
+	.ioctl = NULL,
 };
 
 static struct platform_device_id z180_id_table[] = {
