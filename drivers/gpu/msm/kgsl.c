@@ -1586,6 +1586,12 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		lock = kgsl_ioctl_funcs[nr].lock;
 	} else {
 		func = dev_priv->device->ftbl->ioctl;
+		if (!func) {
+			KGSL_DRV_INFO(dev_priv->device,
+				      "invalid ioctl code %08x\n", cmd);
+			ret = -EINVAL;
+			goto done;
+		}
 		lock = 1;
 	}
 
