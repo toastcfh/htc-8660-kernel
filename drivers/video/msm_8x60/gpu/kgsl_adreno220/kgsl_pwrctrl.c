@@ -299,11 +299,13 @@ void kgsl_pwrctrl_uninit_sysfs(struct kgsl_device *device)
 
 static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
 {
-	int idle, val;
+	int val;
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+	struct kgsl_power_stats stats;
 
-	idle = device->ftbl.device_idle_calc(device);
-	if (!idle)
+	device->ftbl.device_power_stats(device, &stats);
+
+	if (stats.total_time == 0)
 		return;
 
 	/* If the GPU has stayed in turbo mode for a while, *
@@ -316,7 +318,7 @@ static void kgsl_pwrctrl_idle_calc(struct kgsl_device *device)
 		pwr->no_switch_cnt = 0;
 	}
 
-	val = kgsl_pwrctrl_tz_update(idle);
+	val = kgsl_pwrctrl_tz_update(stats.total_time - stats.busy_time);
 	if (val)
 		kgsl_pwrctrl_pwrlevel_change(device,
 					pwr->active_pwrlevel + val);
