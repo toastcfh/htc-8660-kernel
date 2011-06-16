@@ -1754,6 +1754,8 @@ void kgsl_unregister_device(struct kgsl_device *device)
 	kgsl_pwrctrl_uninit_sysfs(device);
 
 	wake_lock_destroy(&device->idle_wakelock);
+	pm_qos_remove_request(&device->pm_qos_req_dma);
+
 	idr_destroy(&device->context_idr);
 
 	if (device->memstore.hostptr)
@@ -1845,6 +1847,9 @@ kgsl_register_device(struct kgsl_device *device)
 	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
 
 	wake_lock_init(&device->idle_wakelock, WAKE_LOCK_IDLE, device->name);
+	pm_qos_add_request(&device->pm_qos_req_dma, PM_QOS_CPU_DMA_LATENCY,
+				PM_QOS_DEFAULT_VALUE);
+
 	idr_init(&device->context_idr);
 
 	/* sysfs and debugfs initalization - failure here is non fatal */
