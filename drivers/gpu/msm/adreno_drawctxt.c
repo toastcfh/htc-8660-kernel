@@ -576,13 +576,9 @@ static void build_regsave_cmds(struct adreno_device *adreno_dev,
 	*cmd++ = REG_TP0_CHICKEN;
 	*cmd++ = ctx->reg_values[1];
 
-	*cmd++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
-	*cmd++ = REG_RBBM_PM_OVERRIDE2;
-	*cmd++ = ctx->reg_values[2];
-
 	if (adreno_is_a220(adreno_dev)) {
 		unsigned int i;
-		unsigned int j = 3;
+		unsigned int j = 2;
 		for (i = REG_LEIA_VSC_BIN_SIZE; i <=
 				REG_LEIA_VSC_PIPE_DATA_LENGTH_7; i++) {
 			*cmd++ = pm4_type3_packet(PM4_REG_TO_MEM, 2);
@@ -1105,16 +1101,9 @@ static void build_regrestore_cmds(struct adreno_device *adreno_dev,
 	ctx->reg_values[1] = gpuaddr(cmd, &drawctxt->gpustate);
 	*cmd++ = 0x00000000;
 
-	*cmd++ = pm4_type0_packet(REG_RBBM_PM_OVERRIDE2, 1);
-	ctx->reg_values[2] = gpuaddr(cmd, &drawctxt->gpustate);
-	if (!adreno_is_a220(adreno_dev))
-		*cmd++ = 0x00000000;
-	else
-		*cmd++ = 0x80;
-
 	if (adreno_is_a220(adreno_dev)) {
 		unsigned int i;
-		unsigned int j = 3;
+		unsigned int j = 2;
 		for (i = REG_LEIA_VSC_BIN_SIZE; i <=
 				REG_LEIA_VSC_PIPE_DATA_LENGTH_7; i++) {
 			*cmd++ = pm4_type0_packet(i, 1);
