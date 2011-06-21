@@ -50,6 +50,8 @@
 #define A200_PM4_FW "yamato_pm4.fw"
 #define A220_PFP_470_FW "leia_pfp_470.fw"
 #define A220_PM4_470_FW "leia_pm4_470.fw"
+#define A225_PFP_FW "a225_pfp.fw"
+#define A225_PM4_FW "a225_pm4.fw"
 
 /*  ringbuffer size log2 quadwords equivalent */
 inline unsigned int adreno_ringbuffer_sizelog2quadwords(unsigned int sizedwords)
@@ -282,10 +284,16 @@ static int adreno_ringbuffer_load_pm4_ucode(struct kgsl_device *device)
 	const char *fwfile;
 	int i, ret = 0;
 
-	if (adreno_is_a220(adreno_dev))
+	if (adreno_is_a220(adreno_dev)) {
 		fwfile =  A220_PM4_470_FW;
-	else
+	} else if (adreno_is_a225(adreno_dev)) {
+		fwfile =  A225_PM4_FW;
+	} else if (adreno_is_a20x(adreno_dev)) {
 		fwfile =  A200_PM4_FW;
+	} else {
+		KGSL_DRV_ERR(device, "Could not load PM4 file\n");
+		return -EINVAL;
+	}
 
 	if (adreno_dev->pm4_fw == NULL) {
 		int len;
@@ -324,10 +332,16 @@ static int adreno_ringbuffer_load_pfp_ucode(struct kgsl_device *device)
 	const char *fwfile;
 	int i, ret = 0;
 
-	if (adreno_is_a220(adreno_dev))
+	if (adreno_is_a220(adreno_dev)) {
 		fwfile =  A220_PFP_470_FW;
-	else
+	} else if (adreno_is_a225(adreno_dev)) {
+		fwfile =  A225_PFP_FW;
+	} else if (adreno_is_a20x(adreno_dev)) {
 		fwfile = A200_PFP_FW;
+	} else {
+		KGSL_DRV_ERR(device, "Could not load PFP firmware\n");
+		return -EINVAL;
+	}
 
 	if (adreno_dev->pfp_fw == NULL) {
 		int len;
