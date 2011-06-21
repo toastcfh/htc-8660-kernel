@@ -1194,5 +1194,7 @@ struct platform_device msm_kgsl_2d0 = {
 	}, \
 })
 struct platform_device *msm_footswitch_devices[] = {
+	FS(FS_GFX2D0, "fs_gfx2d0"),
+	FS(FS_GFX3D,  "fs_gfx3d"),
 };
 unsigned msm_num_footswitch_devices = ARRAY_SIZE(msm_footswitch_devices);
