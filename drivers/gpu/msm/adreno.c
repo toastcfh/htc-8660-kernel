@@ -13,6 +13,7 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <linux/ioctl.h>
 
 #include <mach/socinfo.h>
 
