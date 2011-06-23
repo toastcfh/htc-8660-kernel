@@ -38,7 +38,9 @@ __ATTR(_name, _mode, _show, _store)
 /* Master list of available policies */
 
 static struct kgsl_pwrscale_policy *kgsl_pwrscale_policies[] = {
+#ifdef CONFIG_MSM_SCM
 	&kgsl_pwrscale_policy_tz,
+#endif
 	NULL
 };
 
@@ -279,16 +281,20 @@ EXPORT_SYMBOL(kgsl_pwrscale_detach_policy);
 int kgsl_pwrscale_attach_policy(struct kgsl_device *device,
 				struct kgsl_pwrscale_policy *policy)
 {
-	int ret;
+	int ret = 0;
 
 	if (device->pwrscale.policy != NULL)
 		kgsl_pwrscale_detach_policy(device);
 
 	mutex_lock(&device->mutex);
 	device->pwrscale.policy = policy;
-	ret = device->pwrscale.policy->init(device, &device->pwrscale);
-	if (ret)
-		device->pwrscale.policy = NULL;
+
+	if (policy) {
+		ret = device->pwrscale.policy->init(device, &device->pwrscale);
+		if (ret)
+			device->pwrscale.policy = NULL;
+	}
+
 	mutex_unlock(&device->mutex);
 
 	return ret;

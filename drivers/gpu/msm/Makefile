@@ -4,13 +4,13 @@ msm_kgsl_core-y = \
 	kgsl.o \
 	kgsl_sharedmem.o \
 	kgsl_pwrctrl.o \
-	kgsl_pwrscale.o \
-	kgsl_pwrscale_trustzone.o
+	kgsl_pwrscale.o
 
 msm_kgsl_core-$(CONFIG_DEBUG_FS) += kgsl_debugfs.o
 msm_kgsl_core-$(CONFIG_MSM_KGSL_MMU) += kgsl_mmu.o
 msm_kgsl_core-$(CONFIG_MSM_KGSL_CFF_DUMP) += kgsl_cffdump.o
 msm_kgsl_core-$(CONFIG_MSM_KGSL_DRM) += kgsl_drm.o
+msm_kgsl_core-$(CONFIG_MSM_SCM) += kgsl_pwrscale_trustzone.o
 
 msm_adreno-y += \
 	adreno_ringbuffer.o \

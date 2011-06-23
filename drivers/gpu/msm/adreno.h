@@ -47,6 +47,12 @@
 #define KGSL_CONTEXT_TO_MEM_IDENTIFIER	0xDEADBEEF
 #define KGSL_CMD_IDENTIFIER		0xFEEDFACE
 
+#ifdef CONFIG_MSM_SCM
+#define ADRENO_DEFAULT_PWRSCALE_POLICY  (&kgsl_pwrscale_policy_tz)
+#else
+#define ADRENO_DEFAULT_PWRSCALE_POLICY  NULL
+#endif
+
 struct adreno_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
 	unsigned int chip_id;
