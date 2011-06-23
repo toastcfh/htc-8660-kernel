@@ -780,23 +780,23 @@ static unsigned int *build_gmem2sys_cmds(struct adreno_device *adreno_dev,
 	*cmds++ = PM4_REG(REG_RB_MODECONTROL);
 	*cmds++ = 0x6;		/* EDRAM copy */
 
-	if (adreno_is_a220(adreno_dev)) {
-		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
-		*cmds++ = 0;
-	}
-
 	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
 	*cmds++ = PM4_REG(REG_PA_CL_CLIP_CNTL);
 	*cmds++ = 0x00010000;
 
 	if (adreno_is_a220(adreno_dev)) {
-		*cmds++ = 0xc0043600; /* packet 3 3D_DRAW_INDX_2 */
-		*cmds++ = 0x0;
-		*cmds++ = 0x00004046; /* tristrip */
-		*cmds++ = 0x00000004; /* NUM_INDICES */
-		*cmds++ = 0x00010000; /* index: 0x00, 0x01 */
-		*cmds++ = 0x00030002; /* index: 0x02, 0x03 */
+		*cmds++ = pm4_type3_packet(PM4_SET_DRAW_INIT_FLAGS, 1);
+		*cmds++ = 0;
+
+		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
+		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
+		*cmds++ = 0x0000000;
+
+		*cmds++ = pm4_type3_packet(PM4_DRAW_INDX, 3);
+		*cmds++ = 0;           /* viz query info. */
+		/* PrimType=RectList, SrcSel=AutoIndex, VisCullMode=Ignore */
+		*cmds++ = 0x00004088;
+		*cmds++ = 3;	       /* NumIndices=3 */
 	} else {
 		/* queue the draw packet */
 		*cmds++ = pm4_type3_packet(PM4_DRAW_INDX, 2);
@@ -999,23 +999,23 @@ static unsigned int *build_sys2gmem_cmds(struct adreno_device *adreno_dev,
 	/* draw pixels with color and depth/stencil component */
 	*cmds++ = 0x4;
 
-	if (adreno_is_a220(adreno_dev)) {
-		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
-		*cmds++ = 0;
-	}
-
 	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
 	*cmds++ = PM4_REG(REG_PA_CL_CLIP_CNTL);
 	*cmds++ = 0x00010000;
 
 	if (adreno_is_a220(adreno_dev)) {
-		*cmds++ = 0xc0043600; /* packet 3 3D_DRAW_INDX_2 */
-		*cmds++ = 0x0;
-		*cmds++ = 0x00004046; /* tristrip */
-		*cmds++ = 0x00000004; /* NUM_INDICES */
-		*cmds++ = 0x00010000; /* index: 0x00, 0x01 */
-		*cmds++ = 0x00030002; /* index: 0x02, 0x03 */
+		*cmds++ = pm4_type3_packet(PM4_SET_DRAW_INIT_FLAGS, 1);
+		*cmds++ = 0;
+
+		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
+		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
+		*cmds++ = 0x0000000;
+
+		*cmds++ = pm4_type3_packet(PM4_DRAW_INDX, 3);
+		*cmds++ = 0;           /* viz query info. */
+		/* PrimType=RectList, SrcSel=AutoIndex, VisCullMode=Ignore */
+		*cmds++ = 0x00004088;
+		*cmds++ = 3;	       /* NumIndices=3 */
 	} else {
 		/* queue the draw packet */
 		*cmds++ = pm4_type3_packet(PM4_DRAW_INDX, 2);

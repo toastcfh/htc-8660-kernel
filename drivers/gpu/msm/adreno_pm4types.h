@@ -157,9 +157,19 @@
 /* copy sequencer instruction memory to system memory */
 #define PM4_IM_STORE            0x2c
 
-/* program an offset that will added to the BIN_BASE value of
- * the 3D_DRAW_INDX_BIN packet */
+/*
+ * for a20x
+ * program an offset that will added to the BIN_BASE value of
+ * the 3D_DRAW_INDX_BIN packet
+ */
 #define PM4_SET_BIN_BASE_OFFSET     0x4B
+
+/*
+ * for a22x
+ * sets draw initiator flags register in PFP, gets bitwise-ORed into
+ * every draw initiator
+ */
+#define PM4_SET_DRAW_INIT_FLAGS      0x4B
 
 #define PM4_SET_PROTECTED_MODE  0x5f /* sets the register protection mode */
 
