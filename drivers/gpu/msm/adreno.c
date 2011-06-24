@@ -441,10 +441,14 @@ static inline bool _rev_match(unsigned int id, unsigned int entry)
 }
 #undef DONT_CARE
 
-enum adreno_gpurev adreno_get_rev(struct adreno_device *adreno_dev)
+static void
+adreno_identify_gpu(struct adreno_device *adreno_dev)
 {
 	enum adreno_gpurev gpurev = ADRENO_REV_UNKNOWN;
 	unsigned int i, core, major, minor;
+
+	adreno_dev->chip_id = adreno_getchipid(&adreno_dev->dev);
+
 	core = (adreno_dev->chip_id >> 24) & 0xff;
 	major = (adreno_dev->chip_id >> 16) & 0xff;
 	minor = (adreno_dev->chip_id >> 8) & 0xff;
@@ -457,7 +461,8 @@ enum adreno_gpurev adreno_get_rev(struct adreno_device *adreno_dev)
 			break;
 		}
 	}
-	return gpurev;
+
+	adreno_dev->gpurev = gpurev;
 }
 
 static int __devinit
@@ -525,10 +530,11 @@ static int adreno_start(struct kgsl_device *device, unsigned int init_ram)
 	/* Power up the device */
 	kgsl_pwrctrl_enable(device);
 
+	/* Identify the specific GPU */
+	adreno_identify_gpu(adreno_dev);
+
 	if (kgsl_mmu_start(device))
 		goto error_clk_off;
-
-	adreno_dev->chip_id = adreno_getchipid(device);
 
 	/*We need to make sure all blocks are powered up and clocked before
 	*issuing a soft reset.  The overrides will then be turned off (set to 0)
@@ -781,7 +787,7 @@ static int adreno_getproperty(struct kgsl_device *device,
 			devinfo.device_id = device->id+1;
 			devinfo.chip_id = adreno_dev->chip_id;
 			devinfo.mmu_enabled = kgsl_mmu_enabled();
-			devinfo.gpu_id = adreno_get_rev(adreno_dev);
+			devinfo.gpu_id = adreno_dev->gpurev;
 			devinfo.gmem_gpubaseaddr = adreno_dev->gmemspace.
 					gpu_base;
 			devinfo.gmem_sizebytes = adreno_dev->gmemspace.

@@ -53,9 +53,18 @@
 #define ADRENO_DEFAULT_PWRSCALE_POLICY  NULL
 #endif
 
+enum adreno_gpurev {
+	ADRENO_REV_UNKNOWN = 0,
+	ADRENO_REV_A200 = 200,
+	ADRENO_REV_A205 = 205,
+	ADRENO_REV_A220 = 220,
+	ADRENO_REV_A225 = 225,
+};
+
 struct adreno_device {
 	struct kgsl_device dev;    /* Must be first field in this struct */
 	unsigned int chip_id;
+	enum adreno_gpurev gpurev;
 	struct kgsl_memregion gmemspace;
 	struct adreno_context *drawctxt_active;
 	wait_queue_head_t ib1_wq;
@@ -82,46 +91,36 @@ void adreno_regwrite_isr(struct kgsl_device *device,
 uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 	unsigned int pt_base, unsigned int gpuaddr, unsigned int *size);
 
-enum adreno_gpurev {
-	ADRENO_REV_UNKNOWN = 0,
-	ADRENO_REV_A200 = 200,
-	ADRENO_REV_A205 = 205,
-	ADRENO_REV_A220 = 220,
-	ADRENO_REV_A225 = 225,
-};
-
-enum adreno_gpurev adreno_get_rev(struct adreno_device *adreno_dev);
-
 static inline int adreno_is_a200(struct adreno_device *adreno_dev)
 {
-	return (adreno_get_rev(adreno_dev) == ADRENO_REV_A200);
+	return (adreno_dev->gpurev == ADRENO_REV_A200);
 }
 
 static inline int adreno_is_a205(struct adreno_device *adreno_dev)
 {
-	return (adreno_get_rev(adreno_dev) == ADRENO_REV_A200);
+	return (adreno_dev->gpurev == ADRENO_REV_A200);
 }
 
 static inline int adreno_is_a20x(struct adreno_device *adreno_dev)
 {
-	enum adreno_gpurev rev = adreno_get_rev(adreno_dev);
-	return (rev  == ADRENO_REV_A200 || rev == ADRENO_REV_A205);
+	return (adreno_dev->gpurev  == ADRENO_REV_A200 ||
+		adreno_dev->gpurev == ADRENO_REV_A205);
 }
 
 static inline int adreno_is_a220(struct adreno_device *adreno_dev)
 {
-	return (adreno_get_rev(adreno_dev) == ADRENO_REV_A220);
+	return (adreno_dev->gpurev == ADRENO_REV_A220);
 }
 
 static inline int adreno_is_a225(struct adreno_device *adreno_dev)
 {
-	return (adreno_get_rev(adreno_dev) == ADRENO_REV_A225);
+	return (adreno_dev->gpurev == ADRENO_REV_A225);
 }
 
 static inline int adreno_is_a22x(struct adreno_device *adreno_dev)
 {
-	enum adreno_gpurev rev = adreno_get_rev(adreno_dev);
-	return (rev  == ADRENO_REV_A220 || rev == ADRENO_REV_A225);
+	return (adreno_dev->gpurev  == ADRENO_REV_A220 ||
+		adreno_dev->gpurev == ADRENO_REV_A225);
 }
 
 #endif /*__ADRENO_H */
