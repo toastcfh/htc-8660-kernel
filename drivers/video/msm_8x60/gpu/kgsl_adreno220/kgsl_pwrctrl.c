@@ -70,8 +70,8 @@ static inline void kgsl_pwrctrl_tz_reset(void)
 	__secure_tz_entry(TZ_RESET_ID, 0);
 }
 
-static void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
-							unsigned int new_level)
+void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
+					unsigned int new_level)
 {
 	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	if (new_level < (pwr->num_pwrlevels - 1) &&
@@ -589,6 +589,8 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 		result = -EINVAL;
 		goto done;
 	}
+
+	register_early_suspend(&device->display_off);
 	return result;
 
 clk_err:
@@ -606,6 +608,8 @@ void kgsl_pwrctrl_close(struct kgsl_device *device)
 	int i;
 
 	KGSL_PWR_INFO(device, "close device %d\n", device->id);
+
+	unregister_early_suspend(&device->display_off);
 
 	if (pwr->interrupt_num > 0) {
 		if (pwr->have_irq) {

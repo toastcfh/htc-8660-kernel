@@ -120,6 +120,13 @@ static struct kgsl_yamato_device yamato_device = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_3D0_REG_MEMORY,
+		.display_off = {
+#ifdef CONFIG_HAS_EARLYSUSPEND
+			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
+			.suspend = kgsl_early_suspend_driver,
+			.resume = kgsl_late_resume_driver,
+#endif
+		},
 	},
 	.gmemspace = {
 		.gpu_base = 0,

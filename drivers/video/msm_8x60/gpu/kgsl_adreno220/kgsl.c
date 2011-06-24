@@ -338,6 +338,7 @@ int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 {
 	int status = -EINVAL;
 	unsigned int nap_allowed_saved;
+	unsigned int idle_pass_saved;
 
 	if (!device)
 		return -EINVAL;
@@ -347,6 +348,8 @@ int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 	mutex_lock(&device->mutex);
 	nap_allowed_saved = device->pwrctrl.nap_allowed;
 	device->pwrctrl.nap_allowed = false;
+	idle_pass_saved = device->pwrctrl.idle_pass;
+	device->pwrctrl.idle_pass = false;
 	device->requested_state = KGSL_STATE_SUSPEND;
 	/* Make sure no user process is waiting for a timestamp *
 	 * before supending */
@@ -380,6 +383,7 @@ int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 	}
 	device->requested_state = KGSL_STATE_NONE;
 	device->pwrctrl.nap_allowed = nap_allowed_saved;
+	device->pwrctrl.idle_pass = idle_pass_saved;
 	status = 0;
 
 end:
@@ -399,6 +403,7 @@ int kgsl_resume_device(struct kgsl_device *device)
 	mutex_lock(&device->mutex);
 	if (device->state == KGSL_STATE_SUSPEND) {
 		device->requested_state = KGSL_STATE_ACTIVE;
+		kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
 		status = device->ftbl.device_start(device, 0);
 		if (status == 0) {
 			device->state = KGSL_STATE_ACTIVE;
@@ -419,6 +424,7 @@ int kgsl_resume_device(struct kgsl_device *device)
 
 end:
 	mutex_unlock(&device->mutex);
+	kgsl_check_idle(device);
 	KGSL_PWR_WARN(device, "resume end\n");
 	return status;
 }
@@ -454,6 +460,14 @@ const struct dev_pm_ops kgsl_pm_ops = {
 	.runtime_resume = kgsl_runtime_resume,
 };
 
+void kgsl_early_suspend_driver(struct early_suspend *h)
+{
+	struct kgsl_device *device = container_of(h,
+					struct kgsl_device, display_off);
+	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
+}
+EXPORT_SYMBOL(kgsl_early_suspend_driver);
+
 int kgsl_suspend_driver(struct platform_device *pdev,
 					pm_message_t state)
 {
@@ -466,6 +480,14 @@ int kgsl_resume_driver(struct platform_device *pdev)
 	struct kgsl_device *device = dev_get_drvdata(&pdev->dev);
 	return kgsl_resume_device(device);
 }
+
+void kgsl_late_resume_driver(struct early_suspend *h)
+{
+	struct kgsl_device *device = container_of(h,
+					struct kgsl_device, display_off);
+	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+}
+EXPORT_SYMBOL(kgsl_late_resume_driver);
 
 /* file operations */
 static struct kgsl_process_private *
