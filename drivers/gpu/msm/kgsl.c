@@ -1015,8 +1015,8 @@ static long kgsl_ioctl_drawctxt_destroy(struct kgsl_device_private *dev_priv,
 	}
 
 	if (dev_priv->device->ftbl->drawctxt_destroy)
-		result = dev_priv->device->ftbl->drawctxt_destroy(
-			dev_priv->device, context);
+		dev_priv->device->ftbl->drawctxt_destroy(dev_priv->device,
+			context);
 
 	kgsl_destroy_context(dev_priv, context);
 
