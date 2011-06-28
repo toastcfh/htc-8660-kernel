@@ -1228,10 +1228,8 @@ static long adreno_ioctl(struct kgsl_device_private *dev_priv,
 
 		context = kgsl_find_context(dev_priv, binbase->drawctxt_id);
 		if (context) {
-			result = adreno_drawctxt_set_bin_base_offset(
-					dev_priv->device,
-					context,
-					binbase->offset);
+			adreno_drawctxt_set_bin_base_offset(
+				dev_priv->device, context, binbase->offset);
 		} else {
 			result = -EINVAL;
 			KGSL_DRV_ERR(dev_priv->device,

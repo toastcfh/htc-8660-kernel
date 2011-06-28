@@ -115,7 +115,7 @@ struct kgsl_functable {
 	int (*drawctxt_create) (struct kgsl_device *device,
 		struct kgsl_pagetable *pagetable, struct kgsl_context *context,
 		uint32_t flags);
-	int (*drawctxt_destroy) (struct kgsl_device *device,
+	void (*drawctxt_destroy) (struct kgsl_device *device,
 		struct kgsl_context *context);
 	long (*ioctl) (struct kgsl_device_private *dev_priv,
 		unsigned int cmd, void *data);

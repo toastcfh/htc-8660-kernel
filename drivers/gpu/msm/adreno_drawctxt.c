@@ -133,34 +133,12 @@ struct tmp_ctx {
 */
 unsigned int uint2float(unsigned int uintval)
 {
-	unsigned int exp = 0;
-	unsigned int frac = 0;
-	unsigned int u = uintval;
+	unsigned int exp, frac = 0;
 
-	/* Handle zero separately */
 	if (uintval == 0)
 		return 0;
-	/* Find log2 of u */
-	if (u >= 0x10000) {
-		exp += 16;
-		u >>= 16;
-	}
-	if (u >= 0x100) {
-		exp += 8;
-		u >>= 8;
-	}
-	if (u >= 0x10) {
-		exp += 4;
-		u >>= 4;
-	}
-	if (u >= 0x4) {
-		exp += 2;
-		u >>= 2;
-	}
-	if (u >= 0x2) {
-		exp += 1;
-		u >>= 1;
-	}
+
+	exp = ilog2(uintval);
 
 	/* Calculate fraction */
 	if (23 > exp)
@@ -1487,9 +1465,6 @@ int adreno_drawctxt_create(struct kgsl_device *device,
 	/* Save the shader instruction memory on context switching */
 	drawctxt->flags |= CTXT_FLAGS_SHADER_SAVE;
 
-	memset(&drawctxt->context_gmem_shadow.gmemshadow,
-			0, sizeof(struct kgsl_memdesc));
-
 	if (!(flags & KGSL_CONTEXT_NO_GMEM_ALLOC)) {
 		/* create gmem shadow */
 		ret = create_gmem_shadow(adreno_dev, drawctxt, &ctx);
@@ -1509,14 +1484,14 @@ err:
 
 /* destroy a drawing context */
 
-int adreno_drawctxt_destroy(struct kgsl_device *device,
+void adreno_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct adreno_context *drawctxt = context->devctxt;
 
 	if (drawctxt == NULL)
-		return -EINVAL;
+		return;
 
 	/* deactivate context */
 	if (adreno_dev->drawctxt_active == drawctxt) {
@@ -1538,23 +1513,17 @@ int adreno_drawctxt_destroy(struct kgsl_device *device,
 
 	kfree(drawctxt);
 	context->devctxt = NULL;
-
-	return 0;
 }
 
 /* set bin base offset */
-int adreno_drawctxt_set_bin_base_offset(struct kgsl_device *device,
+void adreno_drawctxt_set_bin_base_offset(struct kgsl_device *device,
 				      struct kgsl_context *context,
 				      unsigned int offset)
 {
 	struct adreno_context *drawctxt = context->devctxt;
 
-	if (drawctxt == NULL)
-		return -EINVAL;
-
-	drawctxt->bin_base_offset = offset;
-
-	return 0;
+	if (drawctxt)
+		drawctxt->bin_base_offset = offset;
 }
 
 /* switch drawing contexts */

@@ -100,13 +100,13 @@ int adreno_drawctxt_create(struct kgsl_device *device,
 			struct kgsl_context *context,
 			uint32_t flags);
 
-int adreno_drawctxt_destroy(struct kgsl_device *device,
+void adreno_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context);
 
 void adreno_drawctxt_switch(struct adreno_device *adreno_dev,
 				struct adreno_context *drawctxt,
 				unsigned int flags);
-int adreno_drawctxt_set_bin_base_offset(struct kgsl_device *device,
+void adreno_drawctxt_set_bin_base_offset(struct kgsl_device *device,
 				      struct kgsl_context *context,
 					unsigned int offset);
 

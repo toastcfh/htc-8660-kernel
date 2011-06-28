@@ -874,7 +874,7 @@ static int z180_wait(struct kgsl_device *device,
 	return status;
 }
 
-static int
+static void
 z180_drawctxt_destroy(struct kgsl_device *device,
 			  struct kgsl_context *context)
 {
@@ -887,8 +887,6 @@ z180_drawctxt_destroy(struct kgsl_device *device,
 		device->mmu.hwpagetable = device->mmu.defaultpagetable;
 		kgsl_setstate(device, KGSL_MMUFLAGS_PTUPDATE);
 	}
-
-	return 0;
 }
 
 static void z180_power_stats(struct kgsl_device *device,
