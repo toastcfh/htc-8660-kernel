@@ -144,9 +144,6 @@ static ssize_t policy_sysfs_store(struct kobject *kobj,
 
 static void policy_sysfs_release(struct kobject *kobj)
 {
-	struct kgsl_pwrscale *pwrscale = to_pwrscale(kobj);
-
-	complete(&pwrscale->kobj_unregister);
 }
 
 static ssize_t pwrscale_sysfs_show(struct kobject *kobj,
@@ -239,12 +236,8 @@ int kgsl_pwrscale_policy_add_files(struct kgsl_device *device,
 {
 	int ret;
 
-	init_completion(&pwrscale->kobj_unregister);
-
-	ret = kobject_init_and_add(&pwrscale->kobj,
-				   &ktype_pwrscale_policy,
-				   &device->pwrscale_kobj,
-				   "%s", pwrscale->policy->name);
+	ret = kobject_add(&pwrscale->kobj, &device->pwrscale_kobj,
+		"%s", pwrscale->policy->name);
 
 	if (ret)
 		return ret;
@@ -252,8 +245,8 @@ int kgsl_pwrscale_policy_add_files(struct kgsl_device *device,
 	ret = sysfs_create_group(&pwrscale->kobj, attr_group);
 
 	if (ret) {
+		kobject_del(&pwrscale->kobj);
 		kobject_put(&pwrscale->kobj);
-		wait_for_completion(&pwrscale->kobj_unregister);
 	}
 
 	return ret;
@@ -264,16 +257,21 @@ void kgsl_pwrscale_policy_remove_files(struct kgsl_device *device,
 				       struct attribute_group *attr_group)
 {
 	sysfs_remove_group(&pwrscale->kobj, attr_group);
+	kobject_del(&pwrscale->kobj);
 	kobject_put(&pwrscale->kobj);
-	wait_for_completion(&pwrscale->kobj_unregister);
+}
+
+static void _kgsl_pwrscale_detach_policy(struct kgsl_device *device)
+{
+	if (device->pwrscale.policy != NULL)
+		device->pwrscale.policy->close(device, &device->pwrscale);
+	device->pwrscale.policy = NULL;
 }
 
 void kgsl_pwrscale_detach_policy(struct kgsl_device *device)
 {
 	mutex_lock(&device->mutex);
-	if (device->pwrscale.policy != NULL)
-		device->pwrscale.policy->close(device, &device->pwrscale);
-	device->pwrscale.policy = NULL;
+	_kgsl_pwrscale_detach_policy(device);
 	mutex_unlock(&device->mutex);
 }
 EXPORT_SYMBOL(kgsl_pwrscale_detach_policy);
@@ -283,10 +281,14 @@ int kgsl_pwrscale_attach_policy(struct kgsl_device *device,
 {
 	int ret = 0;
 
-	if (device->pwrscale.policy != NULL)
-		kgsl_pwrscale_detach_policy(device);
-
 	mutex_lock(&device->mutex);
+
+	if (device->pwrscale.policy == policy)
+		goto done;
+
+	if (device->pwrscale.policy != NULL)
+		_kgsl_pwrscale_detach_policy(device);
+
 	device->pwrscale.policy = policy;
 
 	if (policy) {
@@ -295,6 +297,7 @@ int kgsl_pwrscale_attach_policy(struct kgsl_device *device,
 			device->pwrscale.policy = NULL;
 	}
 
+done:
 	mutex_unlock(&device->mutex);
 
 	return ret;
@@ -303,8 +306,16 @@ EXPORT_SYMBOL(kgsl_pwrscale_attach_policy);
 
 int kgsl_pwrscale_init(struct kgsl_device *device)
 {
-	return kobject_init_and_add(&device->pwrscale_kobj, &ktype_pwrscale,
-				    &device->dev->kobj, "pwrscale");
+	int ret;
+
+	ret = kobject_init_and_add(&device->pwrscale_kobj, &ktype_pwrscale,
+		&device->dev->kobj, "pwrscale");
+
+	if (ret)
+		return ret;
+
+	kobject_init(&device->pwrscale.kobj, &ktype_pwrscale_policy);
+	return ret;
 }
 EXPORT_SYMBOL(kgsl_pwrscale_init);
 
