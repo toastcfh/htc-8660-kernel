@@ -51,7 +51,6 @@ struct kgsl_pwrscale_policy  {
 struct kgsl_pwrscale {
 	struct kgsl_pwrscale_policy *policy;
 	struct kobject kobj;
-	struct completion kobj_unregister;
 	void *priv;
 };
 
