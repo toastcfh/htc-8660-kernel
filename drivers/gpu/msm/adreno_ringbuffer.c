@@ -33,17 +33,6 @@
 */
 #define GSL_RB_PROTECTED_MODE_CONTROL		0x200001F2
 
-#define GSL_CP_INT_MASK \
-	(CP_INT_CNTL__SW_INT_MASK | \
-	CP_INT_CNTL__T0_PACKET_IN_IB_MASK | \
-	CP_INT_CNTL__OPCODE_ERROR_MASK | \
-	CP_INT_CNTL__PROTECTED_MODE_ERROR_MASK | \
-	CP_INT_CNTL__RESERVED_BIT_ERROR_MASK | \
-	CP_INT_CNTL__IB_ERROR_MASK | \
-	CP_INT_CNTL__IB2_INT_MASK | \
-	CP_INT_CNTL__IB1_INT_MASK | \
-	CP_INT_CNTL__RB_INT_MASK)
-
 /* Firmware file names
  * Legacy names must remain but replacing macro names to
  * match current kgsl model.
@@ -103,27 +92,27 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 	if (status & CP_INT_CNTL__T0_PACKET_IN_IB_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer TO packet in IB interrupt\n");
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	}
 	if (status & CP_INT_CNTL__OPCODE_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer opcode error interrupt\n");
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	}
 	if (status & CP_INT_CNTL__PROTECTED_MODE_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer protected mode error interrupt\n");
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	}
 	if (status & CP_INT_CNTL__RESERVED_BIT_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer reserved bit error interrupt\n");
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	}
 	if (status & CP_INT_CNTL__IB_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer IB error interrupt\n");
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_OFF);
 	}
 	if (status & CP_INT_CNTL__SW_INT_MASK)
 		KGSL_CMD_INFO(rb->device, "ringbuffer software interrupt\n");
@@ -131,12 +120,12 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 	if (status & CP_INT_CNTL__IB2_INT_MASK)
 		KGSL_CMD_INFO(rb->device, "ringbuffer ib2 interrupt\n");
 
-	if (status & (~GSL_CP_INT_MASK))
+	if (status & (~KGSL_CP_INT_MASK))
 		KGSL_CMD_WARN(rb->device,
 			"bad bits in REG_CP_INT_STATUS %08x\n", status);
 
 	/* only ack bits we understand */
-	status &= GSL_CP_INT_MASK;
+	status &= KGSL_CP_INT_MASK;
 	adreno_regwrite(device, REG_CP_INT_ACK, status);
 
 	if (status & (CP_INT_CNTL__IB1_INT_MASK | CP_INT_CNTL__RB_INT_MASK)) {
@@ -503,7 +492,6 @@ int adreno_ringbuffer_start(struct adreno_ringbuffer *rb, unsigned int init_ram)
 	/* idle device to validate ME INIT */
 	status = adreno_idle(device, KGSL_TIMEOUT_DEFAULT);
 
-	adreno_regwrite(rb->device, REG_CP_INT_CNTL, GSL_CP_INT_MASK);
 	if (status == 0)
 		rb->flags |= KGSL_FLAGS_STARTED;
 
@@ -513,8 +501,6 @@ int adreno_ringbuffer_start(struct adreno_ringbuffer *rb, unsigned int init_ram)
 int adreno_ringbuffer_stop(struct adreno_ringbuffer *rb)
 {
 	if (rb->flags & KGSL_FLAGS_STARTED) {
-		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
-
 		/* ME_HALT */
 		adreno_regwrite(rb->device, REG_CP_ME_CNTL, 0x10000000);
 

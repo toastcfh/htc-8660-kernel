@@ -28,10 +28,6 @@
 #define GSL_PT_PAGE_BITS_MASK	0x00000007
 #define GSL_PT_PAGE_ADDR_MASK	PAGE_MASK
 
-#define GSL_MMU_INT_MASK \
-	(MH_INTERRUPT_MASK__AXI_READ_ERROR | \
-	 MH_INTERRUPT_MASK__AXI_WRITE_ERROR)
-
 static void pagetable_remove_sysfs_objects(struct kgsl_pagetable *pagetable);
 
 static ssize_t
@@ -872,8 +868,10 @@ int kgsl_mmu_start(struct kgsl_device *device)
 	/* setup MMU and sub-client behavior */
 	kgsl_regwrite(device, MH_MMU_CONFIG, mmu->config);
 
-	/* enable axi interrupts */
-	kgsl_regwrite(device, MH_INTERRUPT_MASK, GSL_MMU_INT_MASK);
+	/*
+	 * Interrupts are enabled on a per-device level when
+	 * kgsl_pwrctrl_irq() is called
+	*/
 
 	/* idle device */
 	kgsl_idle(device,  KGSL_TIMEOUT_DEFAULT);
@@ -882,10 +880,6 @@ int kgsl_mmu_start(struct kgsl_device *device)
 	kgsl_regwrite(device, MH_MMU_MPU_BASE, mmu->mpu_base);
 	kgsl_regwrite(device, MH_MMU_MPU_END,
 			mmu->mpu_base + mmu->mpu_range);
-
-	/* enable axi interrupts */
-	kgsl_regwrite(device, MH_INTERRUPT_MASK,
-			GSL_MMU_INT_MASK | MH_INTERRUPT_MASK__MMU_PAGE_FAULT);
 
 	/* sub-client MMU lookups require address translation */
 	if ((mmu->config & ~0x1) > 0) {
@@ -1128,9 +1122,7 @@ int kgsl_mmu_stop(struct kgsl_device *device)
 	struct kgsl_mmu *mmu = &device->mmu;
 
 	if (mmu->flags & KGSL_FLAGS_STARTED) {
-		/* disable mh interrupts */
 		/* disable MMU */
-		kgsl_regwrite(device, MH_INTERRUPT_MASK, 0);
 		kgsl_regwrite(device, MH_MMU_CONFIG, 0x00000000);
 
 		mmu->flags &= ~KGSL_FLAGS_STARTED;

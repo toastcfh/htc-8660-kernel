@@ -327,12 +327,14 @@ void kgsl_pwrctrl_irq(struct kgsl_device *device, int state)
 			KGSL_PWR_INFO(device,
 				"irq on, device %d\n", device->id);
 			enable_irq(pwr->interrupt_num);
+			device->ftbl->irqctrl(device, 1);
 		}
 	} else if (state == KGSL_PWRFLAGS_OFF) {
 		if (test_and_clear_bit(KGSL_PWRFLAGS_IRQ_ON,
 			&pwr->power_flags)) {
 			KGSL_PWR_INFO(device,
 				"irq off, device %d\n", device->id);
+			device->ftbl->irqctrl(device, 0);
 			disable_irq(pwr->interrupt_num);
 		}
 	}
