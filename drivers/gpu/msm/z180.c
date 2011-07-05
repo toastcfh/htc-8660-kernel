@@ -553,7 +553,8 @@ static int z180_start(struct kgsl_device *device, unsigned int init_ram)
 	z180_regwrite(device, ADDR_MH_CLNT_INTF_CTRL_CONFIG1, 0x00030F27);
 	z180_regwrite(device, ADDR_MH_CLNT_INTF_CTRL_CONFIG2, 0x004B274F);
 
-	z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0x3);
+	/* Set interrupts to 0 to ensure a good state */
+	z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0x0);
 
 	status = kgsl_mmu_start(device);
 	if (status)
@@ -861,6 +862,19 @@ static void z180_power_stats(struct kgsl_device *device,
 	stats->busy_time = 0;
 }
 
+static void z180_irqctrl(struct kgsl_device *device, int state)
+{
+	/* Control interrupts for Z180 and the Z180 MMU */
+
+	if (state) {
+		z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 3);
+		z180_regwrite(device, MH_INTERRUPT_MASK, KGSL_MMU_INT_MASK);
+	} else {
+		z180_regwrite(device, (ADDR_VGC_IRQENABLE >> 2), 0);
+		z180_regwrite(device, MH_INTERRUPT_MASK, 0);
+	}
+}
+
 static const struct kgsl_functable z180_functable = {
 	/* Mandatory functions */
 	.regread = z180_regread,
@@ -877,6 +891,7 @@ static const struct kgsl_functable z180_functable = {
 	.setup_pt = z180_setup_pt,
 	.cleanup_pt = z180_cleanup_pt,
 	.power_stats = z180_power_stats,
+	.irqctrl = z180_irqctrl,
 	/* Optional functions */
 	.setstate = z180_setstate,
 	.drawctxt_create = NULL,
