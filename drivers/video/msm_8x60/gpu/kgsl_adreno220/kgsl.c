@@ -1551,6 +1551,7 @@ static long kgsl_ioctl_map_user_mem(struct kgsl_device_private *dev_priv,
 				&entry->memdesc.gpuaddr,
 				KGSL_MEMFLAGS_ALIGN4K | KGSL_MEMFLAGS_CONPHYS);
 	}
+
 	if (result)
 		goto error_free_entry;
 
