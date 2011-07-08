@@ -16,6 +16,8 @@
 #include <linux/log2.h>
 
 #include "kgsl.h"
+#include "kgsl_sharedmem.h"
+#include "kgsl_cffdump.h"
 
 #include "adreno.h"
 #include "adreno_pm4types.h"

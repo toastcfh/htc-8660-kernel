@@ -15,6 +15,7 @@
 
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
+#include "kgsl_device.h"
 
 struct kgsl_pwrscale_attribute {
 	struct attribute attr;

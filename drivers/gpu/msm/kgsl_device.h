@@ -34,6 +34,7 @@
 
 #include <linux/earlysuspend.h>
 
+#include "kgsl.h"
 #include "kgsl_mmu.h"
 #include "kgsl_pwrctrl.h"
 #include "kgsl_log.h"
@@ -214,10 +215,72 @@ struct kgsl_power_stats {
 
 struct kgsl_device *kgsl_get_device(int dev_idx);
 
+static inline void kgsl_regread(struct kgsl_device *device,
+				unsigned int offsetwords,
+				unsigned int *value)
+{
+	device->ftbl->regread(device, offsetwords, value);
+}
+
+static inline void kgsl_regwrite(struct kgsl_device *device,
+				 unsigned int offsetwords,
+				 unsigned int value)
+{
+	device->ftbl->regwrite(device, offsetwords, value);
+}
+
+static inline void kgsl_regread_isr(struct kgsl_device *device,
+				unsigned int offsetwords,
+				unsigned int *value)
+{
+	device->ftbl->regread_isr(device, offsetwords, value);
+}
+
+static inline void kgsl_regwrite_isr(struct kgsl_device *device,
+				 unsigned int offsetwords,
+				 unsigned int value)
+{
+	device->ftbl->regwrite_isr(device, offsetwords, value);
+}
+
+static inline int kgsl_idle(struct kgsl_device *device, unsigned int timeout)
+{
+	return device->ftbl->idle(device, timeout);
+}
+
+static inline int kgsl_create_device_sysfs_files(struct device *root,
+	const struct device_attribute **list)
+{
+	int ret = 0, i;
+	for (i = 0; list[i] != NULL; i++)
+		ret |= device_create_file(root, list[i]);
+	return ret;
+}
+
+static inline void kgsl_remove_device_sysfs_files(struct device *root,
+	const struct device_attribute **list)
+{
+	int i;
+	for (i = 0; list[i] != NULL; i++)
+		device_remove_file(root, list[i]);
+}
+
 static inline struct kgsl_mmu *
 kgsl_get_mmu(struct kgsl_device *device)
 {
 	return (struct kgsl_mmu *) (device ? &device->mmu : NULL);
+}
+
+static inline struct kgsl_device *kgsl_device_from_dev(struct device *dev)
+{
+	int i;
+
+	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
+		if (kgsl_driver.devp[i] && kgsl_driver.devp[i]->dev == dev)
+			return kgsl_driver.devp[i];
+	}
+
+	return NULL;
 }
 
 static inline int kgsl_create_device_workqueue(struct kgsl_device *device)
@@ -242,5 +305,17 @@ kgsl_find_context(struct kgsl_device_private *dev_priv, uint32_t id)
 
 	return  (ctxt && ctxt->dev_priv == dev_priv) ? ctxt : NULL;
 }
+
+int kgsl_check_timestamp(struct kgsl_device *device, unsigned int timestamp);
+
+int kgsl_register_ts_notifier(struct kgsl_device *device,
+			      struct notifier_block *nb);
+
+int kgsl_unregister_ts_notifier(struct kgsl_device *device,
+				struct notifier_block *nb);
+
+int kgsl_device_platform_probe(struct kgsl_device *device,
+		irqreturn_t (*dev_isr) (int, void*));
+void kgsl_device_platform_remove(struct kgsl_device *device);
 
 #endif  /* __KGSL_DEVICE_H */

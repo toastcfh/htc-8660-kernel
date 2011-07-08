@@ -13,10 +13,12 @@
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
+#include <linux/io.h>
 #include <mach/socinfo.h>
 
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
+#include "kgsl_device.h"
 
 #define TZ_GOVERNOR_PERFORMANCE 0
 #define TZ_GOVERNOR_ONDEMAND    1

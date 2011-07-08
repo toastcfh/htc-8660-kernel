@@ -16,6 +16,7 @@
 
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
+#include "kgsl_device.h"
 
 
 void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,

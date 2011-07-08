@@ -27,6 +27,9 @@
 #include "kgsl.h"
 #include "kgsl_debugfs.h"
 #include "kgsl_cffdump.h"
+#include "kgsl_log.h"
+#include "kgsl_sharedmem.h"
+#include "kgsl_device.h"
 
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "kgsl."

@@ -29,6 +29,8 @@
 #ifndef __Z180_H
 #define __Z180_H
 
+#include "kgsl_device.h"
+
 #define DEVICE_2D_NAME "kgsl-2d"
 #define DEVICE_2D0_NAME "kgsl-2d0"
 #define DEVICE_2D1_NAME "kgsl-2d1"

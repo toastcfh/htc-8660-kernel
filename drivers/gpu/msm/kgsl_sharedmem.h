@@ -31,7 +31,6 @@
 
 #include <linux/dma-mapping.h>
 
-struct kgsl_pagetable;
 struct kgsl_device;
 struct kgsl_process_private;
 
@@ -42,8 +41,6 @@ struct kgsl_process_private;
 /** Set if the memdesc describes cached memory */
 #define KGSL_MEMFLAGS_CACHED    0x00000001
 
-struct kgsl_memdesc;
-
 struct kgsl_memdesc_ops {
 	unsigned long (*physaddr)(struct kgsl_memdesc *, unsigned int);
 	void (*outer_cache)(struct kgsl_memdesc *, int);
@@ -51,17 +48,6 @@ struct kgsl_memdesc_ops {
 	int (*vmfault)(struct kgsl_memdesc *, struct vm_area_struct *,
 		       struct vm_fault *);
 	void (*free)(struct kgsl_memdesc *memdesc);
-};
-
-/* shared memory allocation */
-struct kgsl_memdesc {
-	struct kgsl_pagetable *pagetable;
-	void *hostptr;
-	unsigned int gpuaddr;
-	unsigned int physaddr;
-	unsigned int size;
-	unsigned int priv;
-	struct kgsl_memdesc_ops *ops;
 };
 
 extern struct kgsl_memdesc_ops kgsl_vmalloc_ops;
