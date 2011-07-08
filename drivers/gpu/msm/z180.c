@@ -14,6 +14,7 @@
 
 #include "kgsl.h"
 #include "kgsl_cffdump.h"
+#include "kgsl_sharedmem.h"
 
 #include "z180.h"
 #include "z180_reg.h"

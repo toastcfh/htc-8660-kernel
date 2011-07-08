@@ -29,6 +29,7 @@
 #ifndef __ADRENO_H
 #define __ADRENO_H
 
+#include "kgsl_device.h"
 #include "adreno_drawctxt.h"
 #include "adreno_ringbuffer.h"
 

@@ -14,6 +14,7 @@
 #include <linux/delay.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
+#include <linux/io.h>
 
 #include "kgsl.h"
 #include "adreno_postmortem.h"
