@@ -82,10 +82,6 @@ struct kgsl_functable {
 		unsigned int offsetwords, unsigned int *value);
 	void (*regwrite) (struct kgsl_device *device,
 		unsigned int offsetwords, unsigned int value);
-	void (*regread_isr) (struct kgsl_device *device,
-		unsigned int offsetwords, unsigned int *value);
-	void (*regwrite_isr) (struct kgsl_device *device,
-		unsigned int offsetwords, unsigned int value);
 	int (*idle) (struct kgsl_device *device, unsigned int timeout);
 	unsigned int (*isidle) (struct kgsl_device *device);
 	int (*suspend_context) (struct kgsl_device *device);
@@ -227,20 +223,6 @@ static inline void kgsl_regwrite(struct kgsl_device *device,
 				 unsigned int value)
 {
 	device->ftbl->regwrite(device, offsetwords, value);
-}
-
-static inline void kgsl_regread_isr(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int *value)
-{
-	device->ftbl->regread_isr(device, offsetwords, value);
-}
-
-static inline void kgsl_regwrite_isr(struct kgsl_device *device,
-				 unsigned int offsetwords,
-				 unsigned int value)
-{
-	device->ftbl->regwrite_isr(device, offsetwords, value);
 }
 
 static inline int kgsl_idle(struct kgsl_device *device, unsigned int timeout)

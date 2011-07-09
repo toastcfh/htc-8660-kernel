@@ -157,11 +157,11 @@ static void adreno_rbbm_intrcallback(struct kgsl_device *device)
 	unsigned int status = 0;
 	unsigned int rderr = 0;
 
-	adreno_regread_isr(device, REG_RBBM_INT_STATUS, &status);
+	adreno_regread(device, REG_RBBM_INT_STATUS, &status);
 
 	if (status & RBBM_INT_CNTL__RDERR_INT_MASK) {
 		union rbbm_read_error_u rerr;
-		adreno_regread_isr(device, REG_RBBM_READ_ERROR, &rderr);
+		adreno_regread(device, REG_RBBM_READ_ERROR, &rderr);
 		rerr.val = rderr;
 		if (rerr.f.read_address == REG_CP_INT_STATUS &&
 			rerr.f.read_error &&
@@ -181,7 +181,7 @@ static void adreno_rbbm_intrcallback(struct kgsl_device *device)
 	}
 
 	status &= GSL_RBBM_INT_MASK;
-	adreno_regwrite_isr(device, REG_RBBM_INT_ACK, status);
+	adreno_regwrite(device, REG_RBBM_INT_ACK, status);
 }
 
 irqreturn_t adreno_isr(int irq, void *data)
@@ -196,7 +196,7 @@ irqreturn_t adreno_isr(int irq, void *data)
 	BUG_ON(device->regspace.sizebytes == 0);
 	BUG_ON(device->regspace.mmio_virt_base == 0);
 
-	adreno_regread_isr(device, REG_MASTER_INT_SIGNAL, &status);
+	adreno_regread(device, REG_MASTER_INT_SIGNAL, &status);
 
 	if (status & MASTER_INT_SIGNAL__MH_INT_STAT) {
 		kgsl_mh_intrcallback(device);
@@ -1007,41 +1007,32 @@ uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 	return result;
 }
 
-static void _adreno_regread(struct kgsl_device *device,
-			    unsigned int offsetwords,
-			    unsigned int *value)
+void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
+				unsigned int *value)
 {
 	unsigned int *reg;
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
 				+ (offsetwords << 2));
+
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
+
 	/*ensure this read finishes before the next one.
 	 * i.e. act like normal readl() */
 	*value = __raw_readl(reg);
 	rmb();
 }
 
-void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int *value)
-{
-	kgsl_pre_hwaccess(device);
-	_adreno_regread(device, offsetwords, value);
-}
-
-void adreno_regread_isr(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int *value)
-{
-	_adreno_regread(device, offsetwords, value);
-}
-
-static void _adreno_regwrite(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int value)
+void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+				unsigned int value)
 {
 	unsigned int *reg;
 
 	BUG_ON(offsetwords*sizeof(uint32_t) >= device->regspace.sizebytes);
+
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
 
 	kgsl_cffdump_regwrite(device->id, offsetwords << 2, value);
 	reg = (unsigned int *)(device->regspace.mmio_virt_base
@@ -1051,20 +1042,6 @@ static void _adreno_regwrite(struct kgsl_device *device,
 	 * i.e. act like normal writel() */
 	wmb();
 	__raw_writel(value, reg);
-}
-
-void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int value)
-{
-	kgsl_pre_hwaccess(device);
-	_adreno_regwrite(device, offsetwords, value);
-}
-
-void adreno_regwrite_isr(struct kgsl_device *device,
-			      unsigned int offsetwords,
-			      unsigned int value)
-{
-	_adreno_regwrite(device, offsetwords, value);
 }
 
 static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
@@ -1283,8 +1260,6 @@ static const struct kgsl_functable adreno_functable = {
 	/* Mandatory functions */
 	.regread = adreno_regread,
 	.regwrite = adreno_regwrite,
-	.regread_isr = adreno_regread_isr,
-	.regwrite_isr = adreno_regwrite_isr,
 	.idle = adreno_idle,
 	.isidle = adreno_isidle,
 	.suspend_context = adreno_suspend_context,

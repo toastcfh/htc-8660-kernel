@@ -82,12 +82,6 @@ void adreno_regread(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int *value);
 void adreno_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 				unsigned int value);
-void adreno_regread_isr(struct kgsl_device *device,
-			     unsigned int offsetwords,
-			     unsigned int *value);
-void adreno_regwrite_isr(struct kgsl_device *device,
-			      unsigned int offsetwords,
-			      unsigned int value);
 
 uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 	unsigned int pt_base, unsigned int gpuaddr, unsigned int *size);

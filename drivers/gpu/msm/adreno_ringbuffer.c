@@ -64,11 +64,11 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	struct adreno_ringbuffer *rb = &adreno_dev->ringbuffer;
 
-	adreno_regread_isr(device, REG_MASTER_INT_SIGNAL, &master_status);
+	adreno_regread(device, REG_MASTER_INT_SIGNAL, &master_status);
 	while (!status && (num_reads < VALID_STATUS_COUNT_MAX) &&
 		(master_status & MASTER_INT_SIGNAL__CP_INT_STAT)) {
-		adreno_regread_isr(device, REG_CP_INT_STATUS, &status);
-		adreno_regread_isr(device, REG_MASTER_INT_SIGNAL,
+		adreno_regread(device, REG_CP_INT_STATUS, &status);
+		adreno_regread(device, REG_MASTER_INT_SIGNAL,
 					&master_status);
 		num_reads++;
 	}
@@ -103,27 +103,27 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 	if (status & CP_INT_CNTL__T0_PACKET_IN_IB_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer TO packet in IB interrupt\n");
-		adreno_regwrite_isr(rb->device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
 	}
 	if (status & CP_INT_CNTL__OPCODE_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer opcode error interrupt\n");
-		adreno_regwrite_isr(rb->device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
 	}
 	if (status & CP_INT_CNTL__PROTECTED_MODE_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer protected mode error interrupt\n");
-		adreno_regwrite_isr(rb->device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
 	}
 	if (status & CP_INT_CNTL__RESERVED_BIT_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer reserved bit error interrupt\n");
-		adreno_regwrite_isr(rb->device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
 	}
 	if (status & CP_INT_CNTL__IB_ERROR_MASK) {
 		KGSL_CMD_CRIT(rb->device,
 			"ringbuffer IB error interrupt\n");
-		adreno_regwrite_isr(rb->device, REG_CP_INT_CNTL, 0);
+		adreno_regwrite(rb->device, REG_CP_INT_CNTL, 0);
 	}
 	if (status & CP_INT_CNTL__SW_INT_MASK)
 		KGSL_CMD_INFO(rb->device, "ringbuffer software interrupt\n");
@@ -137,7 +137,7 @@ void kgsl_cp_intrcallback(struct kgsl_device *device)
 
 	/* only ack bits we understand */
 	status &= GSL_CP_INT_MASK;
-	adreno_regwrite_isr(device, REG_CP_INT_ACK, status);
+	adreno_regwrite(device, REG_CP_INT_ACK, status);
 
 	if (status & (CP_INT_CNTL__IB1_INT_MASK | CP_INT_CNTL__RB_INT_MASK)) {
 		KGSL_CMD_WARN(rb->device, "ringbuffer ib1/rb interrupt\n");

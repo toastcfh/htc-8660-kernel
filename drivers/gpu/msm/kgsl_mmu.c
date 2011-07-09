@@ -600,8 +600,8 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 	unsigned int status = 0;
 	unsigned int reg;
 
-	kgsl_regread_isr(device, MH_INTERRUPT_STATUS, &status);
-	kgsl_regread_isr(device, MH_AXI_ERROR, &reg);
+	kgsl_regread(device, MH_INTERRUPT_STATUS, &status);
+	kgsl_regread(device, MH_AXI_ERROR, &reg);
 
 	if (status & MH_INTERRUPT_MASK__AXI_READ_ERROR)
 		KGSL_MEM_CRIT(device, "axi read error interrupt: %08x\n", reg);
@@ -612,8 +612,8 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 		struct kgsl_pagetable *pt;
 		int ptid = -1;
 
-		kgsl_regread_isr(device, MH_MMU_PAGE_FAULT, &reg);
-		kgsl_regread_isr(device, MH_MMU_PT_BASE, &ptbase);
+		kgsl_regread(device, MH_MMU_PAGE_FAULT, &reg);
+		kgsl_regread(device, MH_MMU_PT_BASE, &ptbase);
 
 		spin_lock(&kgsl_driver.ptlock);
 		list_for_each_entry(pt, &kgsl_driver.pagetable_list, list) {
@@ -632,7 +632,7 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 		KGSL_MEM_WARN(device,
 			"bad bits in REG_MH_INTERRUPT_STATUS %08x\n", status);
 
-	kgsl_regwrite_isr(device, MH_INTERRUPT_CLEAR, status);
+	kgsl_regwrite(device, MH_INTERRUPT_CLEAR, status);
 
 	/*TODO: figure out how to handle errror interupts.
 	* specifically, page faults should probably nuke the client that
