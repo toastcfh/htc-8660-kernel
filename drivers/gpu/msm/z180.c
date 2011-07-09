@@ -111,12 +111,6 @@ static void z180_regwrite(struct kgsl_device *device,
 static void z180_cmdwindow_write(struct kgsl_device *device,
 				unsigned int addr,
 				unsigned int data);
-static void z180_regread_isr(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int *value);
-static void z180_regwrite_isr(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int value);
 
 #define Z180_MMU_CONFIG					     \
 	(0x01							     \
@@ -207,10 +201,10 @@ static irqreturn_t z180_isr(int irq, void *data)
 	struct kgsl_device *device = (struct kgsl_device *) data;
 	struct z180_device *z180_dev = Z180_DEVICE(device);
 
-	z180_regread_isr(device, ADDR_VGC_IRQSTATUS >> 2, &status);
+	z180_regread(device, ADDR_VGC_IRQSTATUS >> 2, &status);
 
 	if (status & GSL_VGC_INT_MASK) {
-		z180_regwrite_isr(device,
+		z180_regwrite(device,
 			ADDR_VGC_IRQSTATUS >> 2, status & GSL_VGC_INT_MASK);
 
 		result = IRQ_HANDLED;
@@ -222,7 +216,7 @@ static irqreturn_t z180_isr(int irq, void *data)
 		if (status & REG_VGC_IRQSTATUS__G2D_MASK) {
 			int count;
 
-			z180_regread_isr(device,
+			z180_regread(device,
 					 ADDR_VGC_IRQ_ACTIVE_CNT >> 2,
 					 &count);
 
@@ -753,9 +747,13 @@ static void _z180_regwrite_mmu(struct kgsl_device *device,
 /* the rest of the code doesn't want to think about if it is writing mmu
  * registers or normal registers so handle it here
  */
-static void _z180_regread(struct kgsl_device *device, unsigned int offsetwords,
-				unsigned int *value)
+static void z180_regread(struct kgsl_device *device,
+			unsigned int offsetwords,
+			unsigned int *value)
 {
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
+
 	if ((offsetwords >= ADDR_MH_ARBITER_CONFIG &&
 	     offsetwords <= ADDR_MH_AXI_HALT_CONTROL) ||
 	    (offsetwords >= MH_MMU_CONFIG &&
@@ -766,9 +764,13 @@ static void _z180_regread(struct kgsl_device *device, unsigned int offsetwords,
 	}
 }
 
-static void _z180_regwrite(struct kgsl_device *device, unsigned int offsetwords,
+static void z180_regwrite(struct kgsl_device *device,
+				unsigned int offsetwords,
 				unsigned int value)
 {
+	if (!in_interrupt())
+		kgsl_pre_hwaccess(device);
+
 	if ((offsetwords >= ADDR_MH_ARBITER_CONFIG &&
 	     offsetwords <= ADDR_MH_CLNT_INTF_CTRL_CONFIG2) ||
 	    (offsetwords >= MH_MMU_CONFIG &&
@@ -777,37 +779,6 @@ static void _z180_regwrite(struct kgsl_device *device, unsigned int offsetwords,
 	} else {
 		_z180_regwrite_simple(device, offsetwords, value);
 	}
-}
-
-
-static void z180_regread(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int *value)
-{
-	kgsl_pre_hwaccess(device);
-	_z180_regread(device, offsetwords, value);
-}
-
-static void z180_regread_isr(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int *value)
-{
-	_z180_regread(device, offsetwords, value);
-}
-
-static void z180_regwrite(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int value)
-{
-	kgsl_pre_hwaccess(device);
-	_z180_regwrite(device, offsetwords, value);
-}
-
-static void z180_regwrite_isr(struct kgsl_device *device,
-				unsigned int offsetwords,
-				unsigned int value)
-{
-	_z180_regwrite(device, offsetwords, value);
 }
 
 static void z180_cmdwindow_write(struct kgsl_device *device,
@@ -894,8 +865,6 @@ static const struct kgsl_functable z180_functable = {
 	/* Mandatory functions */
 	.regread = z180_regread,
 	.regwrite = z180_regwrite,
-	.regread_isr = z180_regread_isr,
-	.regwrite_isr = z180_regwrite_isr,
 	.idle = z180_idle,
 	.isidle = z180_isidle,
 	.suspend_context = z180_suspend_context,
