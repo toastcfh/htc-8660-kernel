@@ -2100,7 +2100,6 @@ static int __init kgsl_core_init(void)
 	kgsl_sharedmem_init_sysfs();
 	kgsl_cffdump_init();
 
-	/* Generic device initialization */
 	INIT_LIST_HEAD(&kgsl_driver.process_list);
 
 	result = kgsl_ptdata_init();

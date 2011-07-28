@@ -116,8 +116,6 @@ struct kgsl_driver {
 	struct kobject *prockobj;
 	struct kgsl_device *devp[KGSL_DEVICE_MAX];
 
-	uint32_t flags_debug;
-
 	/* Global lilst of open processes */
 	struct list_head process_list;
 	/* Global list of pagetables */
