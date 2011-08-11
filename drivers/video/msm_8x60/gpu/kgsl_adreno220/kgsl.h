@@ -125,13 +125,7 @@ struct kgsl_driver {
 	/* Mutex for protecting the device list */
 	struct mutex devlock;
 
-	struct {
-		unsigned long *bitmap;
-		int entries;
-		spinlock_t lock;
-		void *hostptr;
-		unsigned int physaddr;
-	} ptpool;
+	struct kgsl_ptpool ptpool;
 
 	struct {
 		unsigned int vmalloc;

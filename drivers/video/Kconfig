@@ -2231,11 +2231,14 @@ config MSM_KGSL_PAGE_TABLE_SIZE
 	  is 0xFFF0000 or (256M - 64K).
 
 config MSM_KGSL_PAGE_TABLE_COUNT
-	int "Number of concurrent pagetables to support"
+	int "Minimum of concurrent pagetables to support"
 	default 8
 	depends on KGSL_PER_PROCESS_PAGE_TABLE
 	---help---
 	  Specify the number of pagetables to allocate at init time
+	  This is the number of concurrent processes that are guaranteed to
+          to run at any time.  Additional processes can be created dynamically
+          assuming there is enough contiguous memory to allocate the pagetable.
 
 if ARCH_MSM8X60
 	source "drivers/video/msm_8x60/Kconfig"

@@ -51,6 +51,307 @@ struct kgsl_pte_debug {
 	(MH_INTERRUPT_MASK__AXI_READ_ERROR | \
 	 MH_INTERRUPT_MASK__AXI_WRITE_ERROR)
 
+static ssize_t
+sysfs_show_ptpool_entries(struct kobject *kobj,
+			  struct kobj_attribute *attr,
+			  char *buf)
+{
+	return sprintf(buf, "%d\n", kgsl_driver.ptpool.entries);
+}
+
+static ssize_t
+sysfs_show_ptpool_min(struct kobject *kobj,
+			 struct kobj_attribute *attr,
+			 char *buf)
+{
+	return sprintf(buf, "%d\n", kgsl_driver.ptpool.static_entries);
+}
+
+static ssize_t
+sysfs_show_ptpool_chunks(struct kobject *kobj,
+			 struct kobj_attribute *attr,
+			 char *buf)
+{
+	return sprintf(buf, "%d\n", kgsl_driver.ptpool.chunks);
+}
+
+static ssize_t
+sysfs_show_ptpool_ptsize(struct kobject *kobj,
+			 struct kobj_attribute *attr,
+			 char *buf)
+{
+	return sprintf(buf, "%d\n", kgsl_driver.ptpool.ptsize);
+}
+
+static struct kobj_attribute attr_ptpool_entries = {
+	.attr = { .name = "ptpool_entries", .mode = 0444 },
+	.show = sysfs_show_ptpool_entries,
+	.store = NULL,
+};
+
+static struct kobj_attribute attr_ptpool_min = {
+	.attr = { .name = "ptpool_min", .mode = 0444 },
+	.show = sysfs_show_ptpool_min,
+	.store = NULL,
+};
+
+static struct kobj_attribute attr_ptpool_chunks = {
+	.attr = { .name = "ptpool_chunks", .mode = 0444 },
+	.show = sysfs_show_ptpool_chunks,
+	.store = NULL,
+};
+
+static struct kobj_attribute attr_ptpool_ptsize = {
+	.attr = { .name = "ptpool_ptsize", .mode = 0444 },
+	.show = sysfs_show_ptpool_ptsize,
+	.store = NULL,
+};
+
+static struct attribute *ptpool_attrs[] = {
+	&attr_ptpool_entries.attr,
+	&attr_ptpool_min.attr,
+	&attr_ptpool_chunks.attr,
+	&attr_ptpool_ptsize.attr,
+	NULL,
+};
+
+static struct attribute_group ptpool_attr_group = {
+	.attrs = ptpool_attrs,
+};
+
+static int
+_kgsl_ptpool_add_entries(struct kgsl_ptpool *pool, int count, int dynamic)
+{
+	struct kgsl_ptpool_chunk *chunk;
+	size_t size = ALIGN(count * pool->ptsize, PAGE_SIZE);
+
+	BUG_ON(count == 0);
+
+	if (get_order(size) >= MAX_ORDER) {
+		KGSL_CORE_ERR("ptpool allocation is too big: %d\n", size);
+		return -EINVAL;
+	}
+
+	chunk = kzalloc(sizeof(*chunk), GFP_KERNEL);
+	if (chunk == NULL) {
+		KGSL_CORE_ERR("kzalloc(%d) failed\n", sizeof(*chunk));
+		return -ENOMEM;
+	}
+
+	chunk->size = size;
+	chunk->count = count;
+	chunk->dynamic = dynamic;
+
+	chunk->data = dma_alloc_coherent(NULL, size,
+					 &chunk->phys, GFP_KERNEL);
+
+	if (chunk->data == NULL) {
+		KGSL_CORE_ERR("dma_alloc_coherent(%d) failed\n", size);
+		goto err;
+	}
+
+	chunk->bitmap = kzalloc(BITS_TO_LONGS(count) * 4, GFP_KERNEL);
+
+	if (chunk->bitmap == NULL) {
+		KGSL_CORE_ERR("kzalloc(%d) failed\n",
+			BITS_TO_LONGS(count) * 4);
+		goto err_dma;
+	}
+
+	list_add_tail(&chunk->list, &pool->list);
+
+	pool->chunks++;
+	pool->entries += count;
+
+	if (!dynamic)
+		pool->static_entries += count;
+
+	return 0;
+
+err_dma:
+	dma_free_coherent(NULL, chunk->size, chunk->data, chunk->phys);
+err:
+	kfree(chunk);
+	return -ENOMEM;
+}
+
+static void *
+_kgsl_ptpool_get_entry(struct kgsl_ptpool *pool, unsigned int *physaddr)
+{
+	struct kgsl_ptpool_chunk *chunk;
+
+	list_for_each_entry(chunk, &pool->list, list) {
+		int bit = find_first_zero_bit(chunk->bitmap, chunk->count);
+
+		if (bit >= chunk->count)
+			continue;
+
+		set_bit(bit, chunk->bitmap);
+		*physaddr = chunk->phys + (bit * pool->ptsize);
+
+		return chunk->data + (bit * pool->ptsize);
+	}
+
+	return NULL;
+}
+
+/**
+ * kgsl_ptpool_add
+ * @pool:  A pointer to a ptpool structure
+ * @entries: Number of entries to add
+ *
+ * Add static entries to the pagetable pool.
+ */
+
+int
+kgsl_ptpool_add(struct kgsl_ptpool *pool, int count)
+{
+	int ret = 0;
+	BUG_ON(count == 0);
+
+	mutex_lock(&pool->lock);
+
+	/* Only 4MB can be allocated in one chunk, so larger allocations
+	   need to be split into multiple sections */
+
+	while (count) {
+		int entries = ((count * pool->ptsize) > SZ_4M) ?
+			SZ_4M / pool->ptsize : count;
+
+		/* Add the entries as static, i.e. they don't ever stand
+		   a chance of being removed */
+
+		ret =  _kgsl_ptpool_add_entries(pool, entries, 0);
+		if (ret)
+			break;
+
+		count -= entries;
+	}
+
+	mutex_unlock(&pool->lock);
+	return ret;
+}
+
+/**
+ * kgsl_ptpool_alloc
+ * @pool:  A pointer to a ptpool structure
+ * @addr: A pointer to store the physical address of the chunk
+ *
+ * Allocate a pagetable from the pool.  Returns the virtual address
+ * of the pagetable, the physical address is returned in physaddr
+ */
+
+void *kgsl_ptpool_alloc(struct kgsl_ptpool *pool, unsigned int *physaddr)
+{
+	void *addr = NULL;
+	int ret;
+
+	mutex_lock(&pool->lock);
+	addr = _kgsl_ptpool_get_entry(pool, physaddr);
+	if (addr)
+		goto done;
+
+	/* Add a chunk for 1 more pagetable and mark it as dynamic */
+	ret = _kgsl_ptpool_add_entries(pool, 1, 1);
+
+	if (ret)
+		goto done;
+
+	addr = _kgsl_ptpool_get_entry(pool, physaddr);
+done:
+	mutex_unlock(&pool->lock);
+	return addr;
+}
+
+static inline void _kgsl_ptpool_rm_chunk(struct kgsl_ptpool_chunk *chunk)
+{
+	list_del(&chunk->list);
+
+	if (chunk->data)
+		dma_free_coherent(NULL, chunk->size, chunk->data,
+			chunk->phys);
+	kfree(chunk->bitmap);
+	kfree(chunk);
+}
+
+/**
+ * kgsl_ptpool_free
+ * @pool:  A pointer to a ptpool structure
+ * @addr: A pointer to the virtual address to free
+ *
+ * Free a pagetable allocated from the pool
+ */
+
+void kgsl_ptpool_free(struct kgsl_ptpool *pool, void *addr)
+{
+	struct kgsl_ptpool_chunk *chunk, *tmp;
+
+	if (pool == NULL || addr == NULL)
+		return;
+
+	mutex_lock(&pool->lock);
+	list_for_each_entry_safe(chunk, tmp, &pool->list, list)  {
+		if (addr >=  chunk->data &&
+		    addr < chunk->data + chunk->size) {
+			int bit = ((unsigned long) (addr - chunk->data)) /
+				pool->ptsize;
+
+			clear_bit(bit, chunk->bitmap);
+			memset(addr, 0, pool->ptsize);
+
+			if (chunk->dynamic &&
+				bitmap_empty(chunk->bitmap, chunk->count))
+				_kgsl_ptpool_rm_chunk(chunk);
+
+			break;
+		}
+	}
+
+	mutex_unlock(&pool->lock);
+}
+
+void kgsl_ptpool_destroy(struct kgsl_ptpool *pool)
+{
+	struct kgsl_ptpool_chunk *chunk, *tmp;
+
+	if (pool == NULL)
+		return;
+
+	mutex_lock(&pool->lock);
+	list_for_each_entry_safe(chunk, tmp, &pool->list, list)
+		_kgsl_ptpool_rm_chunk(chunk);
+	mutex_unlock(&pool->lock);
+
+	memset(pool, 0, sizeof(*pool));
+}
+
+/**
+ * kgsl_ptpool_init
+ * @pool:  A pointer to a ptpool structure to initialize
+ * @ptsize: The size of each pagetable entry
+ * @entries:  The number of inital entries to add to the pool
+ *
+ * Initalize a pool and allocate an initial chunk of entries.
+ */
+
+int kgsl_ptpool_init(struct kgsl_ptpool *pool, int ptsize, int entries)
+{
+	int ret = 0;
+	BUG_ON(ptsize == 0);
+
+	pool->ptsize = ptsize;
+	mutex_init(&pool->lock);
+	INIT_LIST_HEAD(&pool->list);
+
+	if (entries) {
+		ret = kgsl_ptpool_add(pool, entries);
+		if (ret)
+			return ret;
+	}
+
+	return sysfs_create_group(kgsl_driver.ptkobj, &ptpool_attr_group);
+}
+
 /* pt_mutex needs to be held in this function */
 
 static struct kgsl_pagetable *
@@ -297,62 +598,6 @@ void kgsl_mh_intrcallback(struct kgsl_device *device)
 	*/
 }
 
-static int
-kgsl_ptpool_get(struct kgsl_memdesc *memdesc)
-{
-	int pt;
-	unsigned long flags;
-
-	spin_lock_irqsave(&kgsl_driver.ptpool.lock, flags);
-
-	pt = find_next_zero_bit(kgsl_driver.ptpool.bitmap,
-				kgsl_pagetable_count, 0);
-
-	if (pt >= kgsl_pagetable_count) {
-		spin_unlock_irqrestore(&kgsl_driver.ptpool.lock, flags);
-		return -ENOMEM;
-	}
-
-	set_bit(pt, kgsl_driver.ptpool.bitmap);
-
-	spin_unlock_irqrestore(&kgsl_driver.ptpool.lock, flags);
-
-	/* The memory is zeroed at init time and when page tables are
-	   freed.0 This saves us from having to do the memset here */
-
-	memdesc->hostptr = kgsl_driver.ptpool.hostptr +
-		(pt * KGSL_PAGETABLE_SIZE);
-
-	memdesc->physaddr = kgsl_driver.ptpool.physaddr +
-		(pt * KGSL_PAGETABLE_SIZE);
-
-	memdesc->size = KGSL_PAGETABLE_SIZE;
-
-	return 0;
-}
-
-static void
-kgsl_ptpool_put(struct kgsl_memdesc *memdesc)
-{
-	int pt;
-	unsigned long flags;
-
-	if (memdesc->hostptr == NULL)
-		return;
-
-	pt = (memdesc->hostptr - kgsl_driver.ptpool.hostptr)
-		/ KGSL_PAGETABLE_SIZE;
-
-	/* Clear the memory now to avoid having to do it next time
-	   these entries are allocated */
-
-	memset(memdesc->hostptr, 0, memdesc->size);
-
-	spin_lock_irqsave(&kgsl_driver.ptpool.lock, flags);
-	clear_bit(pt, kgsl_driver.ptpool.bitmap);
-	spin_unlock_irqrestore(&kgsl_driver.ptpool.lock, flags);
-}
-
 static struct kgsl_pagetable *kgsl_mmu_createpagetableobject(
 				unsigned int name)
 {
@@ -399,10 +644,10 @@ static struct kgsl_pagetable *kgsl_mmu_createpagetableobject(
 		goto err_pool;
 	}
 
-	/* allocate page table memory */
-	status = kgsl_ptpool_get(&pagetable->base);
+	pagetable->base.hostptr = kgsl_ptpool_alloc(&kgsl_driver.ptpool,
+		&pagetable->base.physaddr);
 
-	if (status != 0)
+	if (pagetable->base.hostptr == NULL)
 		goto err_pool;
 
 	/* ptpool allocations are from coherent memory, so update the
@@ -426,7 +671,7 @@ static struct kgsl_pagetable *kgsl_mmu_createpagetableobject(
 	return pagetable;
 
 err_free_sharedmem:
-	kgsl_ptpool_put(&pagetable->base);
+	kgsl_ptpool_free(&kgsl_driver.ptpool, &pagetable->base.hostptr);
 err_pool:
 	gen_pool_destroy(pagetable->pool);
 err_flushfilter:
@@ -445,7 +690,7 @@ static void kgsl_mmu_destroypagetable(struct kgsl_pagetable *pagetable)
 
 	kgsl_cleanup_pt(pagetable);
 
-	kgsl_ptpool_put(&pagetable->base);
+	kgsl_ptpool_free(&kgsl_driver.ptpool, pagetable->base.hostptr);
 
 	kgsl_driver.stats.coherent -= KGSL_PAGETABLE_SIZE;
 
