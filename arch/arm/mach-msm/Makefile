@@ -510,7 +510,8 @@ obj-y	+= gpio-v2.o
 else
 obj-y	+= gpio.o generic_gpio.o
 endif
-obj-$(CONFIG_MSM_SLEEP_STATS) += msm_sleep_stats.o
+obj-$(CONFIG_MSM_SLEEP_STATS) += msm_sleep_stats.o idle_stats_device.o
+
 obj-$(CONFIG_MSM_SHOW_RESUME_IRQ) += msm_show_resume_irq.o
 obj-$(CONFIG_MACH_MAHIMAHI) += board-mahimahi-tpa2018d1.o
 obj-$(CONFIG_MACH_MAHIMAHI) += board-mahimahi-smb329.o
