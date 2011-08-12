@@ -1909,8 +1909,6 @@ kgsl_register_device(struct kgsl_device *device)
 	if (ret != 0)
 		goto err_close_mmu;
 
-	kgsl_sharedmem_set(&device->memstore, 0, 0, device->memstore.size);
-
 	wake_lock_init(&device->idle_wakelock, WAKE_LOCK_IDLE, device->name);
 	idr_init(&device->context_idr);
 
