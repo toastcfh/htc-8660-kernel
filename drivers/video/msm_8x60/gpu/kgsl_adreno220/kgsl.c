@@ -464,7 +464,9 @@ void kgsl_early_suspend_driver(struct early_suspend *h)
 {
 	struct kgsl_device *device = container_of(h,
 					struct kgsl_device, display_off);
+	mutex_lock(&device->mutex);
 	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
+	mutex_unlock(&device->mutex);
 }
 EXPORT_SYMBOL(kgsl_early_suspend_driver);
 
@@ -485,7 +487,9 @@ void kgsl_late_resume_driver(struct early_suspend *h)
 {
 	struct kgsl_device *device = container_of(h,
 					struct kgsl_device, display_off);
+	mutex_lock(&device->mutex);
 	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
+	mutex_unlock(&device->mutex);
 }
 EXPORT_SYMBOL(kgsl_late_resume_driver);
 
