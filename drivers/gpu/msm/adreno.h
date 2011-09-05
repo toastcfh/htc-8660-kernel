@@ -80,6 +80,7 @@ struct adreno_device {
 	struct adreno_ringbuffer ringbuffer;
 	unsigned int mharb;
 	struct adreno_gpudev *gpudev;
+	unsigned int wait_timeout;
 };
 
 struct adreno_gpudev {
