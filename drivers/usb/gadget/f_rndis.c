@@ -432,9 +432,6 @@ rndis_setup(struct usb_function *f, const struct usb_ctrlrequest *ctrl)
 	 */
 	case ((USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_INTERFACE) << 8)
 			| USB_CDC_SEND_ENCAPSULATED_COMMAND:
-		if (w_length > 512)
-			USB_ERR("w_length > 512: w_length = %d, req->length = %d\n", w_length, req->length);
-
 		if (w_length > req->length || w_value
 				|| w_index != rndis->ctrl_id)
 			goto invalid;
