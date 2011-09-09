@@ -323,47 +323,11 @@ static void scpll_enable(int sc_pll, uint32_t l_val)
 	udelay(20);
 }
 
-static void scpll_check_ico(int sc_pll)
-{
-	uint32_t regval;
-
-	regval = readl(sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
-	if (regval & BIT(18)) {
-		dprintk("SCPLL%d: ICO2 set before scpll_disable. Register=%d\n",
-			sc_pll, regval);
-	}
-}
-
 static void scpll_disable(int sc_pll)
 {
-	scpll_check_ico(sc_pll);
-
 	/* Power down SCPLL. */
 	writel(SCPLL_POWER_DOWN, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
 }
-
-#ifdef CONFIG_ACPUCLK_SET_RATE_DEBUG
-#define SETRATE_TIMEOUT (3 * HZ)
-struct task_struct *set_rate_process;
-static void set_rate_timeout_handler(unsigned long data)
-{
-	struct task_struct *g, *p;
-
-	pr_info("acpuclk_set_rate timeout, print stack\n");
-
-	read_lock(&tasklist_lock);
-	do_each_thread(g, p) {
-		if (p == set_rate_process )
-			sched_show_task(set_rate_process);
-	} while_each_thread(g, p);
-	read_unlock(&tasklist_lock);
-
-	pr_info("Blocked tasks\n");
-	show_state_filter(TASK_UNINTERRUPTIBLE);
-}
-
-static DEFINE_TIMER(set_rate_timer, set_rate_timeout_handler, 0, 0);
-#endif
 
 static void scpll_change_freq(int sc_pll, uint32_t l_val)
 {
@@ -565,11 +529,6 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
 		mutex_lock(&drv_state.lock);
-#ifdef CONFIG_ACPUCLK_SET_RATE_DEBUG
-		set_rate_process = current;
-		mod_timer(&set_rate_timer, jiffies + SETRATE_TIMEOUT);
-#endif
-	}
 
 	strt_s = drv_state.current_speed[cpu];
 
@@ -649,10 +608,6 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 out:
 	if (reason == SETRATE_CPUFREQ || reason == SETRATE_HOTPLUG)
 		mutex_unlock(&drv_state.lock);
-#ifdef CONFIG_ACPUCLK_SET_RATE_DEBUG
-		del_timer(&set_rate_timer);
-#endif
-	}
 	return rc;
 }
 
