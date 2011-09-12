@@ -82,11 +82,16 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 			clk_set_rate(pwr->grp_clks[0],
 					pwr->pwrlevels[pwr->active_pwrlevel].
 					gpu_freq);
-		if (pwr->power_flags & KGSL_PWRFLAGS_AXI_ON)
+		if (pwr->power_flags & KGSL_PWRFLAGS_AXI_ON) {
 			if (pwr->pcl)
 				msm_bus_scale_client_update_request(pwr->pcl,
 					pwr->pwrlevels[pwr->active_pwrlevel].
 					bus_freq);
+			else if (pwr->ebi1_clk)
+				clk_set_rate(pwr->ebi1_clk,
+					pwr->pwrlevels[pwr->active_pwrlevel].
+					bus_freq);
+		}
 		KGSL_PWR_WARN(device, "pwr level changed to %d\n",
 					  pwr->active_pwrlevel);
 	}
