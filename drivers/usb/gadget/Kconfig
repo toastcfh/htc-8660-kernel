@@ -538,11 +538,11 @@ config USB_GADGET_DUMMY_HCD
 	  side is the master; the gadget side is the slave.  Gadget drivers
 	  can be high, full, or low speed; and they have access to endpoints
 	  like those from NET2280, PXA2xx, or SA1100 hardware.
-
+	  
 	  This may help in some stages of creating a driver to embed in a
 	  Linux device, since it lets you debug several parts of the gadget
 	  driver without its hardware or drivers being involved.
-
+	  
 	  Since such a gadget side driver needs to interoperate with a host
 	  side Linux-USB device driver, this may help to debug both sides
 	  of a USB protocol stack.
@@ -651,7 +651,7 @@ config USB_ETH
 	help
 	  This driver implements Ethernet style communication, in one of
 	  several ways:
-
+	  
 	   - The "Communication Device Class" (CDC) Ethernet Control Model.
 	     That protocol is often avoided with pure Ethernet adapters, in
 	     favor of simpler vendor-specific hardware, but is widely
@@ -691,7 +691,7 @@ config USB_ETH_RNDIS
 	   If you say "y" here, the Ethernet gadget driver will try to provide
 	   a second device configuration, supporting RNDIS to talk to such
 	   Microsoft USB hosts.
-
+	   
 	   To make MS-Windows work with this, use Documentation/usb/linux.inf
 	   as the "driver info file".  For versions of MS-Windows older than
 	   XP, you'll need to download drivers from Microsoft's website; a URL
@@ -868,13 +868,6 @@ config USB_ANDROID_ACM
 	help
 	  Provides ACM serial function for android gadget driver.
 
-config PASCAL_DETECT
-	boolean "PASCAL DETECT"
-	depends on USB_ANDROID_ACM
-	default n
-	help
-	  Provides ACM serial function for pascal mode.
-
 config USB_ANDROID_ADB
 	boolean "Android gadget adb function"
 	depends on USB_ANDROID
@@ -882,22 +875,16 @@ config USB_ANDROID_ADB
 	  Provides adb function for android gadget driver.
 
 config USB_ANDROID_DIAG
-	boolean "USB HTC Diag Function"
-	depends on USB_ANDROID
-	help
-	  Qualcomm diagnostics interface support.
-
-config USB_ANDROID_QCT_DIAG
-	boolean "USB MSM Diag Function"
+	boolean "USB MSM7K Diag Function"
 	depends on USB_ANDROID
 	help
 	  Qualcomm diagnostics interface support.
 
 config USB_ANDROID_LTE_DIAG
-	boolean "USB MSM 9k Diag Function"
-	depends on USB_ANDROID_QCT_DIAG
+	boolean "USB MSM7K Diag Function"
+	depends on USB_ANDROID
 	help
-	  Qualcomm diagnostics interface support for 9K.
+	  Qualcomm diagnostics interface support.
 
 config USB_ANDROID_MASS_STORAGE
 	boolean "Android gadget mass storage function"
@@ -911,73 +898,28 @@ config USB_ANDROID_MTP
 	help
 	  Provides Media Transfer Protocol (MTP) support for android gadget driver.
 
-config USB_ANDROID_MTP36
-	boolean "Android MTP function for HC"
-	depends on USB_ANDROID
-	help
-	  Provides Media Transfer Protocol (MTP) support for android 3.0 gadget driver.
-
 config USB_ANDROID_RNDIS
 	boolean "Android gadget RNDIS ethernet function"
 	depends on USB_ANDROID
 	help
 	  Provides RNDIS ethernet function for android gadget driver.
 
+config USB_ANDROID_RNDIS_WCEIS
+        boolean "Use Windows Internet Sharing Class/SubClass/Protocol"
+        depends on USB_ANDROID_RNDIS
+        help
+         Causes the driver to look like a Windows-compatible Internet
+         Sharing device, so Windows auto-detects it.
+
+         If you enable this option, the device is no longer CDC ethernet
+         compatible.
+
+
 config USB_ANDROID_ACCESSORY
 	boolean "Android USB accessory function"
 	depends on USB_ANDROID
 	help
 	  Provides Android USB Accessory support for android gadget driver.
-
-config USB_ANDROID_RMNET_SDIO
-       boolean "RmNet over SDIO function driver"
-       depends on USB_ANDROID && MSM_SDIO_CMUX && MSM_SDIO_DMUX
-       default n
-       help
-         Enabling this option adds rmnet over sdio support to the
-         android gadget. Rmnet is an alternative to CDC-ECM
-         and Windows RNDIS. It uses QUALCOMM MSM Interface
-         for control transfers. It acts like a bridge between
-         Host and modem found in MSM chipsets.
-
-config RMNET_SDIO_CTL_CHANNEL
-       int "control SDIO channel id"
-       depends on USB_ANDROID_RMNET_SDIO
-       help
-         Control SDIO channel for transferring QMI messages
-
-config RMNET_SDIO_DATA_CHANNEL
-       int "Data SDIO channel id"
-       depends on USB_ANDROID_RMNET_SDIO
-       help
-         Data SDIO channel for transferring network data
-
-config USB_ANDROID_SERIAL
-	boolean "Android gadget Serial function"
-	depends on USB_ANDROID
-	help
-
-config USB_ANDROID_PROJECTOR
-	boolean "Android gadget Projector function"
-	depends on USB_ANDROID
-	help
-
-config USB_ANDROID_ECM
-	boolean "Android gadget ECM function"
-	depends on USB_ANDROID
-	help
-
-config USB_F_SERIAL_SDIO
-	boolean "generic serial function driver over SDIO"
-	depends on USB_ANDROID && MSM_SDIO_CMUX && MSM_SDIO_AL
-	default n
-	help
-          Gadget serial driver is one way to communicate with modem
-          device. This option enables serial driver to communicate
-          to modem device using sdio. It makes very minimal changes
-          to Gadget usb serial interface(f_serial.c) and adds
-          separate transport layer u_sdio(very similar to u_serial.c)
-          Say "y" to link the driver staticall
 
 config USB_CDC_COMPOSITE
 	tristate "CDC Composite Device (Ethernet and ACM)"
@@ -1087,9 +1029,9 @@ config DOCK_ACCESSORY_DETECT
 	default n
 
 config USB_BYPASS_VBUS_NOTIFY
-        boolean "USB BYPASS VBUS NOTIFY"
-        depends on USB_ANDROID
-        default n
+	boolean "USB BYPASS VBUS NOTIFY"
+	depends on USB_ANDROID
+	default n
 
 config USB_HUB
 	boolean "USB HUB driver"

@@ -42,6 +42,7 @@
 #include <mach/msm_hsusb.h>
 #include <mach/htc_battery_common.h>
 #include <linux/device.h>
+#include <linux/usb/composite.h>
 #include <mach/msm_hsusb_hw.h>
 #include <mach/clk.h>
 #include <linux/uaccess.h>
@@ -96,8 +97,6 @@ static struct switch_dev dock_switch = {
 /* #define MHL_REDETECT */
 #define ADC_RETRY 3
 #define ADC_RETRY_DELAY HZ/5
-
-#define PM8058ADC_16BIT(adc) ((adc * 2200) / 65535) /* vref=2.2v, 16-bits resolution */
 #endif
 
 static const char *const ep_name[] = {
@@ -174,9 +173,6 @@ static void usb_do_remote_wakeup(struct work_struct *w);
 static void accessory_detect_work(struct work_struct *w);
 static void accessory_detect_init(struct usb_info *ui);
 #endif
-extern int android_switch_function(unsigned func);
-extern int android_show_function(char *buf);
-extern void android_set_serialno(char *serialno);
 
 #define USB_STATE_IDLE    0
 #define USB_STATE_ONLINE  1
@@ -1136,43 +1132,19 @@ static void handle_endpoint(struct usb_info *ui, unsigned bit)
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
 
-#define FLUSH_WAIT_US	5
-#define FLUSH_TIMEOUT	(2 * (USEC_PER_SEC / FLUSH_WAIT_US))
 static void flush_endpoint_hw(struct usb_info *ui, unsigned bits)
 {
-	uint32_t unflushed = 0;
-	uint32_t stat = 0;
-	int cnt = 0;
-
 	/* flush endpoint, canceling transactions
 	** - this can take a "large amount of time" (per databook)
 	** - the flush can fail in some cases, thus we check STAT
 	**   and repeat if we're still operating
 	**   (does the fact that this doesn't use the tripwire matter?!)
 	*/
-	while (cnt < FLUSH_TIMEOUT) {
+	do {
 		writel(bits, USB_ENDPTFLUSH);
-		while (((unflushed = readl(USB_ENDPTFLUSH)) & bits) &&
-		       cnt < FLUSH_TIMEOUT) {
-			cnt++;
-			udelay(FLUSH_WAIT_US);
-		}
-
-		stat = readl(USB_ENDPTSTAT);
-		if (cnt >= FLUSH_TIMEOUT)
-			goto err;
-		if (!(stat & bits))
-			goto done;
-		cnt++;
-		udelay(FLUSH_WAIT_US);
-	}
-
-err:
-	USB_WARNING("%s: Could not complete flush! NOT GOOD! "
-		   "stat: %x unflushed: %x bits: %x\n", __func__,
-		   stat, unflushed, bits);
-done:
-	return;
+		while (readl(USB_ENDPTFLUSH) & bits)
+			udelay(100);
+	} while (readl(USB_ENDPTSTAT) & bits);
 }
 
 static void flush_endpoint_sw(struct msm_endpoint *ept)
@@ -1228,6 +1200,7 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 	struct usb_info *ui = data;
 	unsigned n;
 	unsigned long flags;
+	struct usb_composite_dev *cdev = get_gadget_data(&ui->gadget);
 
 	n = readl(USB_USBSTS);
 	writel(n, USB_USBSTS);
@@ -1290,8 +1263,9 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 			 * XXX:  so deconfigure on reset for the time being
 			 */
 			if (ui->driver) {
+				cdev->mute_switch = 1;
 				USB_INFO("usb: notify offline\n");
-				ui->driver->mute_disconnect(&ui->gadget);
+				ui->driver->disconnect(&ui->gadget);
 			}
 			/* cancel pending ep0 transactions */
 			flush_endpoint(&ui->ep0out);
@@ -1370,110 +1344,6 @@ static ssize_t show_usb_cable_connect(struct device *dev,
 	return length;
 }
 
-static ssize_t show_usb_function_switch(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	return android_show_function(buf);
-}
-
-static ssize_t store_usb_function_switch(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	unsigned u;
-	ssize_t  ret;
-
-	u = simple_strtoul(buf, NULL, 10);
-	ret = android_switch_function(u);
-
-	if (ret == 0)
-		return count;
-	else
-		return 0;
-}
-
-static ssize_t show_usb_serial_number(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	unsigned length;
-	struct msm_hsusb_platform_data *pdata = dev->platform_data;
-
-	length = sprintf(buf, "%s", pdata->serial_number);
-	return length;
-}
-
-static ssize_t store_usb_serial_number(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	struct msm_hsusb_platform_data *pdata = dev->platform_data;
-	char *serialno = "000000000000";
-
-	if (buf[0] == '0' || buf[0] == '1') {
-		memset(mfg_df_serialno, 0x0, sizeof(mfg_df_serialno));
-		if (buf[0] == '0') {
-			strncpy(mfg_df_serialno, serialno, strlen(serialno));
-			use_mfg_serialno = 1;
-			android_set_serialno(mfg_df_serialno);
-		} else {
-			strncpy(mfg_df_serialno, pdata->serial_number,
-				strlen(pdata->serial_number));
-			use_mfg_serialno = 0;
-			android_set_serialno(pdata->serial_number);
-		}
-		/* reset_device */
-		msm_hsusb_request_reset();
-	}
-
-	return count;
-}
-
-static ssize_t show_dummy_usb_serial_number(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	unsigned length;
-	struct msm_hsusb_platform_data *pdata = dev->platform_data;
-
-	if (use_mfg_serialno)
-		length = sprintf(buf, "%s", mfg_df_serialno); /* dummy */
-	else
-		length = sprintf(buf, "%s", pdata->serial_number); /* Real */
-	return length;
-}
-
-static ssize_t store_dummy_usb_serial_number(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t count)
-{
-	int data_buff_size = (sizeof(mfg_df_serialno) > strlen(buf))?
-		strlen(buf):sizeof(mfg_df_serialno);
-	int loop_i;
-
-	/* avoid overflow, mfg_df_serialno[16] always is 0x0 */
-	if (data_buff_size == 16)
-		data_buff_size--;
-
-	for (loop_i = 0; loop_i < data_buff_size; loop_i++)	{
-		if (buf[loop_i] >= 0x30 && buf[loop_i] <= 0x39) /* 0-9 */
-			continue;
-		else if (buf[loop_i] >= 0x41 && buf[loop_i] <= 0x5A) /* A-Z */
-			continue;
-		if (buf[loop_i] == 0x0A) /* Line Feed */
-			continue;
-		else {
-			USB_WARNING("%s(): get invaild char (0x%2.2X)\n",
-				__func__, buf[loop_i]);
-			return -EINVAL;
-		}
-	}
-
-	use_mfg_serialno = 1;
-	memset(mfg_df_serialno, 0x0, sizeof(mfg_df_serialno));
-	strncpy(mfg_df_serialno, buf, data_buff_size);
-	android_set_serialno(mfg_df_serialno);
-	/*device_reset */
-	msm_hsusb_request_reset();
-
-	return count;
-}
-
 static ssize_t show_USB_ID_status(struct device *dev,
 			struct device_attribute *attr,
 			char *buf)
@@ -1514,12 +1384,6 @@ static ssize_t show_usb_car_kit_enable(struct device *dev,
 	return length;
 }
 static DEVICE_ATTR(usb_cable_connect, 0444, show_usb_cable_connect, NULL);
-static DEVICE_ATTR(usb_function_switch, 0664,
-		show_usb_function_switch, store_usb_function_switch);
-static DEVICE_ATTR(usb_serial_number, 0644,
-		show_usb_serial_number, store_usb_serial_number);
-static DEVICE_ATTR(dummy_usb_serial_number, 0644,
-		show_dummy_usb_serial_number, store_dummy_usb_serial_number);
 static DEVICE_ATTR(USB_ID_status, 0444, show_USB_ID_status, NULL);
 /*for kar kit AP check if car kit enable*/
 static DEVICE_ATTR(usb_car_kit_enable, 0444, show_usb_car_kit_enable, NULL);
@@ -1601,21 +1465,6 @@ static void usb_prepare(struct usb_info *ui)
 		USB_WARNING("dev_attr_usb_cable_connect failed\n");
 
 	ret = device_create_file(&ui->pdev->dev,
-		&dev_attr_usb_function_switch);
-	if (ret != 0)
-		USB_WARNING("dev_attr_usb_function_switch failed\n");
-
-	ret = device_create_file(&ui->pdev->dev,
-		&dev_attr_usb_serial_number);
-	if (ret != 0)
-		USB_WARNING("dev_attr_usb_serial_number failed\n");
-
-	ret = device_create_file(&ui->pdev->dev,
-		&dev_attr_dummy_usb_serial_number);
-	if (ret != 0)
-		USB_WARNING("dev_attr_dummy_usb_serial_number failed\n");
-
-	ret = device_create_file(&ui->pdev->dev,
 		&dev_attr_USB_ID_status);
 	if (ret != 0)
 		USB_WARNING("dev_attr_USB_ID_status failed\n");
@@ -1645,6 +1494,7 @@ static void usb_prepare(struct usb_info *ui)
 static void usb_reset(struct usb_info *ui)
 {
 	struct msm_otg *otg = to_msm_otg(ui->xceiv);
+	struct usb_composite_dev *cdev = get_gadget_data(&ui->gadget);
 
 	USB_INFO("reset controller\n");
 
@@ -1672,8 +1522,9 @@ static void usb_reset(struct usb_info *ui)
 	configure_endpoints(ui);
 
 	if (ui->driver) {
+		cdev->mute_switch = 1;
 		USB_INFO("usb: notify offline\n");
-		ui->driver->mute_disconnect(&ui->gadget);
+		ui->driver->disconnect(&ui->gadget);
 	}
 
 	/* cancel pending ep0 transactions */
@@ -1739,10 +1590,8 @@ static void accessory_type_switch(int type)
 	USB_INFO("%s accessory_type %d, type %d\n",
 			__func__, ui->accessory_type, type);
 
-	if (type == 0 || ui->accessory_type != type) {
+	if (type == 0 || ui->accessory_type != type)
 		switch_set_state(&dock_switch, DOCK_STATE_UNDOCKED);
-		ui->accessory_type = 0;
-	}
 
 	switch (type) {
 	case 1:
@@ -1848,6 +1697,7 @@ static void accessory_type_switch(int type)
 			break;
 		}
 
+		ui->accessory_type = 0;
 		break;
 	}
 }
@@ -1971,19 +1821,6 @@ static irqreturn_t usbid_interrupt(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-#ifdef CONFIG_USB_ACCESSORY_DETECT_BY_ADC
-static ssize_t adc_status_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	uint32_t adc;
-
-	htc_get_usb_accessory_adc_level(&adc);
-	USB_INFO("%s: ADC = %d\n", __func__, PM8058ADC_16BIT(adc));
-	return sprintf(buf, "%d\n", PM8058ADC_16BIT(adc));
-}
-static DEVICE_ATTR(adc, S_IRUGO | S_IWUSR, adc_status_show, NULL);
-#endif
-
 static void accessory_detect_init(struct usb_info *ui)
 {
 	int ret;
@@ -2017,12 +1854,6 @@ static void accessory_detect_init(struct usb_info *ui)
 	ret = device_create_file(dock_switch.dev, &dev_attr_status);
 	if (ret != 0)
 		USB_WARNING("dev_attr_status failed\n");
-
-#ifdef CONFIG_USB_ACCESSORY_DETECT_BY_ADC
-	ret = device_create_file(dock_switch.dev, &dev_attr_adc);
-	if (ret != 0)
-		USB_WARNING("dev_attr_adc failed\n");
-#endif
 
 	enable_irq(ui->idpin_irq);
 
@@ -2085,7 +1916,7 @@ static void charger_detect_by_9v_gpio(struct usb_info *ui)
 		ui->connect_type = CONNECT_TYPE_9V_AC;
 	} else if ((readl(USB_PORTSC) & PORTSC_LS) == PORTSC_LS) {
 		if ((ui->usb_id_pin_gpio) &&
-				gpio_get_value(ui->usb_id_pin_gpio) == 0) {
+				gpio_get_value(ui->usb_id_pin_gpio)) {
 			USB_INFO("9V AC charger\n");
 			ui->connect_type = CONNECT_TYPE_9V_AC;
 		} else {

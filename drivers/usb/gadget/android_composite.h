@@ -27,9 +27,13 @@ struct android_usb_function {
 };
 
 struct android_usb_product {
-	/* Default product ID. */
-	__u16 product_id;
+	/* Vendor ID for this set of functions.
+	 * Default vendor_id in platform data will be used if this is zero.
+	 */
 	__u16 vendor_id;
+
+	/* Product ID for this set of functions. */
+	__u16 product_id;
 
 	/* List of function names associated with this product.
 	 * This is used to compute the USB product ID dynamically
@@ -80,12 +84,6 @@ struct usb_mass_storage_platform_data {
 
 	/* number of LUNS */
 	int nluns;
-
-	/* bitmap of lun to indicate cdrom disk.
-	 * NOTE: Only support one cdrom disk
-	 * and it must be located in last lun */
-	int cdrom_lun;
-	int cdrom_cttype;
 };
 
 /* Platform data for USB ethernet driver. */
@@ -96,9 +94,8 @@ struct usb_ether_platform_data {
 };
 
 extern void android_register_function(struct android_usb_function *f);
-extern int android_get_model_id(void);
+
 extern void android_enable_function(struct usb_function *f, int enable);
-extern int android_switch_function(unsigned func);
 
 
 #endif	/* __LINUX_USB_ANDROID_H */

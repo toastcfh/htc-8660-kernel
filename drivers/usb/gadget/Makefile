@@ -29,9 +29,9 @@ obj-$(CONFIG_USB_CI13XXX)	+= ci13xxx_udc.o
 obj-$(CONFIG_USB_S3C_HSOTG)	+= s3c-hsotg.o
 obj-$(CONFIG_USB_LANGWELL)	+= langwell_udc.o
 ifeq ($(CONFIG_USB_OTG),y)
-obj-$(CONFIG_USB_MSM_72K)	+= msm72k_udc_exp.o
+obj-$(CONFIG_USB_MSM_72K) += msm72k_udc_exp.o
 else
-obj-$(CONFIG_USB_MSM_72K)	+= msm72k_udc.o
+obj-$(CONFIG_USB_MSM_72K) 	+= msm72k_udc.o
 endif
 
 #
@@ -44,17 +44,16 @@ g_serial-objs			:= serial.o
 g_midi-objs			:= gmidi.o
 gadgetfs-objs			:= inode.o
 g_file_storage-objs		:= file_storage.o
+g_mass_storage-objs		:= mass_storage.o
 g_printer-objs			:= printer.o
 g_cdc-objs			:= cdc2.o
 g_multi-objs			:= multi.o
 g_hid-objs			:= hid.o
 g_nokia-objs			:= nokia.o
 g_webcam-objs			:= webcam.o
-serial-objs			:= f_serial.o
-ifeq ($(CONFIG_USB_ANDROID_QCT_DIAG),y)
+ifeq ($(CONFIG_USB_ANDROID_LTE_DIAG),y)
 diag-objs			:= f_diag.o
 endif
-
 
 obj-$(CONFIG_USB_ZERO)		+= g_zero.o
 obj-$(CONFIG_USB_AUDIO)		+= g_audio.o
@@ -76,18 +75,16 @@ obj-$(CONFIG_USB_ANDROID)	+= android.o
 obj-$(CONFIG_USB_ANDROID_ACM)	+= f_acm.o u_serial.o
 obj-$(CONFIG_USB_ANDROID_ADB)	+= f_adb.o
 obj-$(CONFIG_USB_ANDROID_MASS_STORAGE)	+= f_mass_storage.o
-obj-$(CONFIG_USB_ANDROID_RNDIS)	+= f_rndis.o u_ether.o
-obj-$(CONFIG_USB_ANDROID_SERIAL)	+= serial.o u_serial.o
-obj-$(CONFIG_USB_F_SERIAL_SDIO)	+= u_sdio.o
-obj-$(CONFIG_USB_ANDROID_PROJECTOR)	+= f_projector.o
 obj-$(CONFIG_USB_ANDROID_MTP)	+= f_mtp.o
-obj-$(CONFIG_USB_ANDROID_MTP36)	+= f_mtp36.o
-obj-$(CONFIG_USB_ANDROID_ECM)	+= f_ecm.o u_ether.o
+obj-$(CONFIG_USB_ANDROID_RNDIS)	+= f_rndis.o u_ether.o
 obj-$(CONFIG_USB_ANDROID_ACCESSORY)	+= f_accessory.o
 
 # MSM specific
-obj-$(CONFIG_USB_ANDROID_QCT_DIAG)	+= diag.o
+ifeq ($(CONFIG_USB_ANDROID_LTE_DIAG),y)
 obj-$(CONFIG_USB_ANDROID_DIAG)	+= diag.o
-obj-$(CONFIG_USB_ANDROID_RMNET_SDIO)   += f_rmnet_sdio.o
+else
+  obj-$(CONFIG_USB_ANDROID_DIAG)	+= diag.o
+endif
 
 obj-$(CONFIG_USB_HUB)	+= smsc251x.o
+
