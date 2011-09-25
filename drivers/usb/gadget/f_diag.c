@@ -572,8 +572,6 @@ int modem_to_userspace(void *buf, int r, int type, int is9k)
 	return 1;
 }
 
-
-
 static long htc_diag_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct diag_context *ctxt = &_context;
@@ -594,12 +592,15 @@ static long htc_diag_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 		if (copy_from_user(&tmp_value, argp, sizeof(int)))
 			return -EFAULT;
 		DIAG_INFO("diag: enable %d\n", tmp_value);
+
 #if defined(CONFIG_MACH_VIGOR)
 		android_enable_function(&mdmctxt->function, tmp_value);
 #endif
 
+#if defined(CONFIG_USB_ANDROID_LTE_DIAG)
+		android_enable_function(&mdmctxt->function, tmp_value);
+#endif
 		android_enable_function(&_context.function, tmp_value);
-
 		diag_smd_enable(driver->ch, "diag_ioctl", tmp_value);
 #if defined(CONFIG_MACH_MECHA)
 		/* internal hub*/
@@ -611,9 +612,7 @@ static long htc_diag_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 		wake_up(&ctxt->read_wq);
 	break;
 	case USB_DIAG_FUNC_IOC_ENABLE_GET:
-
 		tmp_value = !_context.function.hidden;
-
 		if (copy_to_user(argp, &tmp_value, sizeof(tmp_value)))
 			return -EFAULT;
 	break;
@@ -866,12 +865,14 @@ static int htc_diag_release(struct inode *ip, struct file *fp)
 		kfree(ctxt->user_read_buf);
 		ctxt->user_read_buf = 0;
 	}
-	if (htc_write_buf_copy) {
+	if (!htc_write_buf_copy) {
 		kfree(htc_write_buf_copy);
 		htc_write_buf_copy = 0;
 	}
-	if (htc_write_diag_req)
+	if (!htc_write_diag_req) {
+		kfree(htc_write_diag_req);
 		htc_write_diag_req = 0;
+	}
 	while ((req = req_get(ctxt, &ctxt->rx_req_idle)))
 		diag_req_free(req);
 	while ((req = req_get(ctxt, &ctxt->rx_req_user)))
@@ -1814,14 +1815,10 @@ static void diag_function_disable(struct usb_function *f)
 		dev->ch.notify(dev->ch.priv, USB_DIAG_DISCONNECT, NULL);
 
 		usb_ep_disable(dev->in);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 		dev->in->driver_data = NULL;
-#endif
 
 		usb_ep_disable(dev->out);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 		dev->out->driver_data = NULL;
-#endif
 
 #if DIAG_XPST
 	if (dev == legacyctxt) {
@@ -1886,7 +1883,7 @@ static int diag_function_set_alt(struct usb_function *f,
 		wake_up(&dev->read_wq);
 	}
 #endif
-
+	spin_unlock_irqrestore(&dev->lock, flags);
 
 	return rc;
 }

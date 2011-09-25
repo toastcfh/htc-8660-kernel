@@ -276,10 +276,6 @@ struct usb_info {
 	struct otg_transceiver *xceiv;
 	enum usb_device_state usb_state;
 	struct wake_lock wlock;
-#ifdef CONFIG_MACH_VERDI_LTE
-	/* wake lock only for Y cable: USB + 9V Charger */
-	struct wake_lock ac9v_wlock;
-#endif
 
 	unsigned int usb_id_pin_gpio;
 	unsigned int idpin_irq;
@@ -771,11 +767,9 @@ int usb_ept_queue_xfer(struct msm_endpoint *ept, struct usb_request *_req)
 		 * start things going, to avoid hw issues
 		 */
 		last->next = req;
-		req->prev = last;
 	} else {
 		/* queue was empty -- kick the hardware */
 		ept->req = req;
-		req->prev = NULL;
 		usb_ept_start(ept);
 	}
 	ept->last = req;
@@ -798,74 +792,25 @@ static void ep0_complete(struct usb_ep *ep, struct usb_request *req)
 		req->complete(&ui->ep0in.ep, req);
 }
 
-static void ep0_status_complete(struct usb_ep *ep, struct usb_request *_req)
-{
-	struct usb_request *req = _req->context;
-	struct msm_request *r;
-	struct msm_endpoint *ept;
-	struct usb_info *ui;
-
-	if (!req)
-		return;
-
-	r = to_msm_request(req);
-	ept = to_msm_endpoint(ep);
-	ui = ept->ui;
-	_req->context = 0;
-
-	req->complete = r->gadget_complete;
-	req->zero = 0;
-	r->gadget_complete = 0;
-	if (req->complete)
-		req->complete(&ui->ep0in.ep, req);
-
-}
-
-static void ep0_status_phase(struct usb_ep *ep, struct usb_request *req)
-{
-	struct msm_endpoint *ept = to_msm_endpoint(ep);
-	struct usb_info *ui = ept->ui;
-
-	req->length = 0;
-	req->complete = ep0_status_complete;
-
-	/* status phase */
-	if (atomic_read(&ui->ep0_dir) == USB_DIR_IN)
-		usb_ept_queue_xfer(&ui->ep0out, req);
-	else
-		usb_ept_queue_xfer(&ui->ep0in, req);
-}
-
-static void ep0in_send_zero_leng_pkt(struct msm_endpoint *ept)
-{
-	struct usb_info *ui = ept->ui;
-	struct usb_request *req = ui->setup_req;
-
-	USB_INFO("%s:\n", __func__);
-
-	req->length = 0;
-	req->complete = ep0_status_phase;
-	usb_ept_queue_xfer(&ui->ep0in, req);
-}
-
 static void ep0_queue_ack_complete(struct usb_ep *ep,
 	struct usb_request *_req)
 {
+	struct msm_request *r = to_msm_request(_req);
 	struct msm_endpoint *ept = to_msm_endpoint(ep);
 	struct usb_info *ui = ept->ui;
 	struct usb_request *req = ui->setup_req;
 
 	/* queue up the receive of the ACK response from the host */
 	if (_req->status == 0 && _req->actual == _req->length) {
-		req->context = _req;
-		if (atomic_read(&ui->ep0_dir) == USB_DIR_IN) {
-			if (_req->zero && _req->length &&
-					!(_req->length % ep->maxpacket)) {
-				ep0in_send_zero_leng_pkt(&ui->ep0in);
-				return;
-			}
-		}
-		ep0_status_phase(ep, req);
+		req->length = 0;
+		if (atomic_read(&ui->ep0_dir) == USB_DIR_IN)
+			usb_ept_queue_xfer(&ui->ep0out, req);
+		else
+			usb_ept_queue_xfer(&ui->ep0in, req);
+		_req->complete = r->gadget_complete;
+		r->gadget_complete = 0;
+		if (_req->complete)
+			_req->complete(&ui->ep0in.ep, _req);
 	} else
 		ep0_complete(ep, _req);
 }
@@ -1337,34 +1282,10 @@ static irqreturn_t usb_interrupt(int irq, void *data)
 		}
 
 		if (ui->connect_type != CONNECT_TYPE_USB) {
-#ifdef CONFIG_MACH_VERDI_LTE
-			/* Dirty workaround to accept Y-cable with
-			 * 9V charger and USB Always report to battery
-			 * 9V charger if 9V GPIO is high
-			 */
-			if (ui->connect_type != CONNECT_TYPE_USB_9V_AC) {
-				if (ui->configure_ac_9v_gpio)
-					ui->configure_ac_9v_gpio(1);
-				mdelay(5);
-				if (!gpio_get_value(ui->ac_9v_gpio)) {
 					ui->connect_type = CONNECT_TYPE_USB;
 					queue_work(ui->usb_wq, &ui->notifier_work);
 					ui->ac_detect_count = 0;
 					del_timer_sync(&ui->ac_detect_timer);
-				} else {
-					USB_INFO("USB_9V_AC Y-Cable\n");
-					ui->connect_type = CONNECT_TYPE_USB_9V_AC;
-					wake_lock(&ui->ac9v_wlock);
-				}
-				if (ui->configure_ac_9v_gpio)
-					ui->configure_ac_9v_gpio(0);
-			}
-#else
-			ui->connect_type = CONNECT_TYPE_USB;
-			queue_work(ui->usb_wq, &ui->notifier_work);
-			ui->ac_detect_count = 0;
-			del_timer_sync(&ui->ac_detect_timer);
-#endif
 		}
 	}
 
@@ -1416,10 +1337,6 @@ int usb_get_connect_type(void)
 {
 	if (!the_usb_info)
 		return 0;
-#ifdef CONFIG_MACH_VERDI_LTE
-	if (the_usb_info->connect_type == CONNECT_TYPE_USB_9V_AC)
-		return CONNECT_TYPE_9V_AC;
-#endif
 	return the_usb_info->connect_type;
 }
 EXPORT_SYMBOL(usb_get_connect_type);
@@ -1427,18 +1344,11 @@ EXPORT_SYMBOL(usb_get_connect_type);
 static ssize_t show_usb_cable_connect(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	unsigned length, connect;
+	unsigned length;
 	if (!the_usb_info)
 		return 0;
-	if (the_usb_info->connect_type == CONNECT_TYPE_USB)
-		connect = 1;
-#ifdef CONFIG_MACH_VERDI_LTE
-	else if (the_usb_info->connect_type == CONNECT_TYPE_USB_9V_AC)
-		connect = 1;
-#endif
-	else
-		connect = 0;
-	length = sprintf(buf, "%d\n", connect);
+	length = sprintf(buf, "%d\n",
+		(the_usb_info->connect_type == CONNECT_TYPE_USB)?1:0);
 	return length;
 }
 
@@ -1522,83 +1432,6 @@ static DEVICE_ATTR(usb_mfg_carkit_enable, 0644,
 	show_mfg_carkit_enable, store_mfg_carkit_enable);
 #endif
 
-#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
-void usb_host_switch(int on)
-{
-	if (the_usb_info->usb_host_switch)
-		the_usb_info->usb_host_switch(on);
-}
-void msm_otg_set_id_state(int online);
-static void usb_host_cable_detect(bool cable_in)
-{
-	unsigned long flags;
-	struct usb_info *ui = the_usb_info;
-	struct msm_otg *dev = to_msm_otg(ui->xceiv);
-
-	if (cable_in) {
-		/* It takes long times to get here and
-		 * check quick remove here */
-		if (gpio_get_value(ui->usb_id_pin_gpio)) {
-			USB_INFO("Skip host cable detection\n");
-			return;
-		}
-
-		usb_host_switch(1);
-
-		if (atomic_read(&dev->in_lpm)) {
-			if (dev->hs_pclk)
-				clk_enable(dev->hs_pclk);
-			if (dev->hs_cclk)
-				clk_enable(dev->hs_cclk);
-		}
-
-		dev->reset(&dev->otg, 1);
-
-		spin_lock_irqsave(&ui->lock, flags);
-		writel(readl(USB_USBCMD) | USBCMD_RS, USB_USBCMD);
-		spin_unlock_irqrestore(&ui->lock, flags);
-		msleep(10);
-
-		/* AGAIN: check quick remove */
-		if (gpio_get_value(ui->usb_id_pin_gpio)) {
-			if (atomic_read(&dev->in_lpm)) {
-				if (dev->hs_pclk)
-					clk_disable(dev->hs_pclk);
-				if (dev->hs_cclk)
-					clk_disable(dev->hs_cclk);
-			}
-			usb_host_switch(0);
-			USB_INFO("Skip host cable detection\n");
-			return;
-		}
-		/* D+/D- does not short, indicating host mode */
-		if ((readl(USB_PORTSC) & PORTSC_LS) != PORTSC_LS) {
-			USB_INFO("Set IDGND = 0, enter HOST mode\n");
-			msm_otg_set_id_state(0);
-		} else {
-			if (atomic_read(&dev->in_lpm)) {
-				if (dev->hs_pclk)
-					clk_disable(dev->hs_pclk);
-				if (dev->hs_cclk)
-					clk_disable(dev->hs_cclk);
-			}
-			usb_host_switch(0);
-			USB_INFO("Not HOST mode\n");
-		}
-	} else {
-		USB_INFO("Set IDGND = 1\n");
-		msm_otg_set_id_state(1);
-		usb_host_switch(0);
-	}
-}
-#ifdef CONFIG_ARCH_MSM8X60
-static struct t_usb_host_status_notifier usb_host_status_notifier = {
-	.name = "usb_host",
-	.func = usb_host_cable_detect,
-};
-#endif
-#endif
-
 static void usb_prepare(struct usb_info *ui)
 {
 	int ret;
@@ -1661,11 +1494,6 @@ static void usb_prepare(struct usb_info *ui)
 	ui->sdev.name = driver_name;
 	ui->sdev.print_name = print_switch_name;
 	ui->sdev.print_state = print_switch_state;
-
-#if (defined(CONFIG_USB_OTG_HOST) && defined(CONFIG_ARCH_MSM8X60))
-	usb_host_detect_register_notifier(&usb_host_status_notifier);
-#endif
-
 	ret = switch_dev_register(&ui->sdev);
 	if (ret != 0)
 		USB_WARNING("switch class can't be registered\n");
@@ -1769,7 +1597,6 @@ static void carkit_detect(struct usb_info *ui)
 static void accessory_type_switch(int type)
 {
 	struct usb_info *ui = the_usb_info;
-	unsigned long flags;
 	USB_INFO("%s accessory_type %d, type %d\n",
 			__func__, ui->accessory_type, type);
 
@@ -1814,17 +1641,52 @@ static void accessory_type_switch(int type)
 		break;
 #endif
 #if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
-	case TYPE_USB_HOST:
-		ui->accessory_type = TYPE_USB_HOST;
+	case 5:
+	{
+		unsigned long flags;
+		struct msm_otg *dev = to_msm_otg(ui->xceiv);
+
+		if (ui->usb_host_switch)
+			ui->usb_host_switch(1);
+
+		if (dev->hs_pclk)
+			clk_enable(dev->hs_pclk);
+		if (dev->hs_cclk)
+			clk_enable(dev->hs_cclk);
+
+		usb_reset(ui);
 		spin_lock_irqsave(&ui->lock, flags);
-		ui->flags |= USB_FLAG_HOST_CHECK;
-		queue_work(ui->usb_wq, &ui->work);
+		writel(readl(USB_USBCMD) | USBCMD_RS, USB_USBCMD);
 		spin_unlock_irqrestore(&ui->lock, flags);
+		msleep(10);
+		/* D+/D- does not short, indicating host mode */
+		if ((readl(USB_PORTSC) & PORTSC_LS) != PORTSC_LS) {
+			USB_INFO("Set IDGND = 0, enter HOST mode\n");
+			if (ui->usb_id2_pin_gpio)
+				gpio_set_value(ui->usb_id2_pin_gpio, 0);
+			ui->accessory_type = 5;
+		} else {
+			if (atomic_read(&dev->in_lpm)) {
+				if (dev->hs_pclk)
+					clk_disable(dev->hs_pclk);
+				if (dev->hs_cclk)
+					clk_disable(dev->hs_cclk);
+			}
+			if (ui->usb_host_switch)
+				ui->usb_host_switch(0);
+			USB_INFO("Not HOST mode\n");
+		}
 		break;
+	}
 #endif
 	case TYPE_UNDEFINED:
 		break;
-	case TYPE_UNKNOWN:
+	case 0:
+#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
+		USB_INFO("Set IDGND = 1\n");
+		if (ui->usb_id2_pin_gpio)
+			gpio_set_value(ui->usb_id2_pin_gpio, 1);
+#endif
 		switch (ui->accessory_type) {
 		case TYPE_CAR_KIT:
 			USB_INFO("carkit removed\n");
@@ -1847,7 +1709,9 @@ static void accessory_type_switch(int type)
 #if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
 		case TYPE_USB_HOST:
 			/* host mode */
-			usb_host_cable_detect(0);
+			if (ui->usb_host_switch)
+				ui->usb_host_switch(0);
+			ui->accessory_type = 0;
 			break;
 #endif
 		default:
@@ -2121,9 +1985,19 @@ static void charger_detect(struct usb_info *ui)
 			mod_timer(&ui->ac_detect_timer, jiffies + (3 * HZ));
 		}
 	} else {
+		if (ui->usb_id_pin_gpio != 0) {
+			if (gpio_get_value(ui->usb_id_pin_gpio) == 0) {
+				USB_INFO("9V AC charger\n");
+				ui->connect_type = CONNECT_TYPE_9V_AC;
+	} else {
 		USB_INFO("AC charger\n");
 		ui->connect_type = CONNECT_TYPE_AC;
-
+			}
+		} else {
+			USB_INFO("AC charger\n");
+			ui->connect_type = CONNECT_TYPE_AC;
+		}
+		queue_work(ui->usb_wq, &ui->notifier_work);
 		msleep(10);
 		if (ui->change_phy_voltage)
 			ui->change_phy_voltage(0);
@@ -2161,9 +2035,8 @@ static void charger_detect_by_9v_gpio(struct usb_info *ui)
 	} else {
 		USB_INFO("not AC charger\n");
 		ui->connect_type = CONNECT_TYPE_UNKNOWN;
-
-		/* With MHL dongle, it cannot get any information in D+/D- */
-		if (ui->accessory_type != TYPE_MHL)
+		queue_delayed_work(ui->usb_wq, &ui->chg_det,
+				DELAY_FOR_CHECK_CHG);
 			mod_timer(&ui->ac_detect_timer, jiffies + (3 * HZ));
 	}
 	queue_work(ui->usb_wq, &ui->notifier_work);
@@ -2239,13 +2112,6 @@ static void usb_do_work(struct work_struct *w)
 				else
 					charger_detect(ui);
 			}
-#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
-			if (flags & USB_FLAG_HOST_CHECK) {
-				USB_INFO("USB_STATE_IDLE: usb_host_cable_detect\n");
-				usb_host_cable_detect(1);
-				break;
-			}
-#endif
 			break;
 		case USB_STATE_ONLINE:
 			if (atomic_read(&ui->offline_pending)) {
@@ -2340,13 +2206,6 @@ static void usb_do_work(struct work_struct *w)
 				USB_INFO("msm72k_udc: RESET -> ONLINE\n");
 				break;
 			}
-#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
-			if (flags & USB_FLAG_HOST_CHECK) {
-				USB_INFO("USB_STATE_ONLINE: usb_host_cable_detect\n");
-				usb_host_cable_detect(1);
-				break;
-			}
-#endif
 			break;
 		case USB_STATE_OFFLINE:
 			/* If we were signaled to go online and vbus is still
@@ -2385,13 +2244,6 @@ static void usb_do_work(struct work_struct *w)
 				else
 					charger_detect(ui);
 			}
-#if (defined(CONFIG_USB_OTG) && defined(CONFIG_USB_OTG_HOST))
-			if (flags & USB_FLAG_HOST_CHECK) {
-				USB_INFO("USB_STATE_OFFLINE: usb_host_cable_detect\n");
-				usb_host_cable_detect(1);
-				break;
-			}
-#endif
 			break;
 		}
 	}
@@ -2413,10 +2265,6 @@ void msm_hsusb_set_vbus_state(int online)
 			/*UART*/
 			if (ui->usb_uart_switch)
 				ui->usb_uart_switch(1);
-#ifdef CONFIG_MACH_VERDI_LTE
-			if (wake_lock_active(&ui->ac9v_wlock))
-				wake_unlock(&ui->ac9v_wlock);
-#endif
 		}
 		spin_unlock_irqrestore(&ui->lock, flags);
 		/* hold a wake lock to distinguish cable type */
@@ -2467,8 +2315,6 @@ static void msm_hsusb_set_vbus_state_internal(int online)
 		ui->flags |= USB_FLAG_VBUS_OFFLINE;
 		chg_stat_detect_enable(0);
 	}
-
-#if 0
 	if (in_interrupt()) {
 		queue_work(ui->usb_wq, &ui->work);
 	} else {
@@ -2476,10 +2322,6 @@ static void msm_hsusb_set_vbus_state_internal(int online)
 		usb_do_work(&ui->work);
 		return;
 	}
-#else
-	/* queue usb_do_work to prevent host/9v detect conflict */
-	queue_work(ui->usb_wq, &ui->work);
-#endif
 out:
 	spin_unlock_irqrestore(&ui->lock, flags);
 }
@@ -2769,11 +2611,9 @@ static int msm72k_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 		ep->req = req->next;
 		ep->head->next = req->item->next;
 	} else {
-		if (req->prev)
 			req->prev->next = req->next;
 		if (req->next)
 			req->next->prev = req->prev;
-		if (req->prev)
 			req->prev->item->next = req->item->next;
 	}
 
@@ -3148,7 +2988,7 @@ static struct attribute_group otg_attr_grp = {
 };
 #endif
 #if (defined(CONFIG_USB_ACCESSORY_DETECT) && defined(CONFIG_MSM_HDMI_MHL))
-static void mhl_status_notifier_func(bool isMHL, int charging_type)
+static void mhl_status_notifier_func(bool isMHL, bool irq_enble)
 {
 	struct usb_info *ui = the_usb_info;
 	int id_pin = gpio_get_value(ui->usb_id_pin_gpio);
@@ -3160,8 +3000,7 @@ static void mhl_status_notifier_func(bool isMHL, int charging_type)
 	if (!isMHL && ui->usb_mhl_switch && ui->accessory_type == TYPE_MHL) {
 		USB_INFO("MHL removed\n");
 		ui->usb_mhl_switch(0);
-		ui->accessory_type = TYPE_UNKNOWN;
-		del_timer_sync(&ui->ac_detect_timer);
+		ui->accessory_type = 0;
 #ifdef MHL_REDETECT
 		if (mhl_connected == 0) {
 			USB_INFO("MHL re-detect\n");
@@ -3228,8 +3067,14 @@ static void ac_detect_expired(unsigned long _data)
 			delay = 10 * HZ;
 		mod_timer(&ui->ac_detect_timer, jiffies + delay);
 	} else {
+		if ((ui->usb_id_pin_gpio) &&
+			gpio_get_value(ui->usb_id_pin_gpio) == 0) {
+			USB_INFO("9V AC charger\n");
+			ui->connect_type = CONNECT_TYPE_9V_AC;
+	} else {
 		USB_INFO("AC charger\n");
 		ui->connect_type = CONNECT_TYPE_AC;
+		}
 		queue_work(ui->usb_wq, &ui->notifier_work);
 	}
 }
@@ -3304,12 +3149,11 @@ static int msm72k_probe(struct platform_device *pdev)
 
 	wake_lock_init(&ui->wlock,
 			WAKE_LOCK_SUSPEND, "usb_bus_active");
+
 #ifdef CONFIG_MACH_VERDI_LTE
 	wake_lock_init(&ui->ac9v_wlock,
 			WAKE_LOCK_SUSPEND, "ac9v_usb_bus_active");
 #endif
-	wake_lock_init(&ui->chg_stat_wlock,
-			WAKE_LOCK_SUSPEND, "chg_stat_active");
 
 	usb_debugfs_init(ui);
 
@@ -3329,10 +3173,11 @@ static int msm72k_probe(struct platform_device *pdev)
 			__func__, retval);
 		switch_dev_unregister(&ui->sdev);
 		wake_lock_destroy(&ui->wlock);
+
 #ifdef CONFIG_MACH_VERDI_LTE
 		wake_lock_destroy(&ui->ac9v_wlock);
 #endif
-		wake_lock_destroy(&ui->chg_stat_wlock);
+
 		return usb_free(ui, retval);
 	}
 

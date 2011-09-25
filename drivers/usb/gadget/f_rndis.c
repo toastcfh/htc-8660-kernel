@@ -571,9 +571,7 @@ static void rndis_disable(struct usb_function *f)
 	gether_disconnect(&rndis->port);
 
 	usb_ep_disable(rndis->notify);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 	rndis->notify->driver_data = NULL;
-#endif
 }
 
 /*-------------------------------------------------------------------------*/

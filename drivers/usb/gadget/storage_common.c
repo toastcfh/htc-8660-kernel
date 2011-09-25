@@ -774,7 +774,7 @@ static ssize_t fsg_show_file(struct device *dev, struct device_attribute *attr,
 		if (IS_ERR(p))
 			rc = PTR_ERR(p);
 		else {
-			rc = buf + (PAGE_SIZE - 1) - 1 - p;
+			rc = strlen(p);
 			memmove(buf, p, rc);
 			buf[rc] = '\n';		/* Add a newline */
 			buf[++rc] = 0;
@@ -821,8 +821,6 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
 	int		rc = 0;
 
-
-	printk(KERN_INFO "[USB] store_file: \"%s\" to %s\n", buf, dev->kobj.name);
 #ifndef CONFIG_USB_ANDROID_MASS_STORAGE
 	/* disabled in android because we need to allow closing the backing file
 	 * if the media was removed

@@ -975,9 +975,7 @@ int gsdio_connect(struct gserial *gser, u8 portno)
 					__func__, ret);
 		usb_ep_disable(gser->in);
 		port->port_usb = 0;
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 		gser->in->driver_data = 0;
-#endif
 		return ret;
 	}
 	gser->out->driver_data = port;
@@ -1021,14 +1019,10 @@ void gsdio_disconnect(struct gserial *gser, u8 portno)
 
 	/* disable endpoints, aborting down any active I/O */
 	usb_ep_disable(gser->out);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 	gser->out->driver_data = NULL;
-#endif
 
 	usb_ep_disable(gser->in);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 	gser->in->driver_data = NULL;
-#endif
 
 	spin_lock_irqsave(&port->port_lock, flags);
 	gsdio_free_requests(gser->out, &port->read_pool);

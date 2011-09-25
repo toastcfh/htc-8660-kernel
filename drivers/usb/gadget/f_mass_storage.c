@@ -325,7 +325,6 @@ struct fsg_dev;
 /* Data shared by all the FSG instances. */
 struct fsg_common {
 	struct usb_gadget	*gadget;
-	struct usb_composite_dev *cdev;
 	struct fsg_dev		*fsg, *new_fsg;
 	wait_queue_head_t	fsg_wait;
 
@@ -1817,6 +1816,37 @@ static int wedge_bulk_in_endpoint(struct fsg_dev *fsg)
 	return rc;
 }
 
+static int pad_with_zeros(struct fsg_dev *fsg)
+{
+	struct fsg_buffhd	*bh = fsg->common->next_buffhd_to_fill;
+	u32			nkeep = bh->inreq->length;
+	u32			nsend;
+	int			rc;
+
+	bh->state = BUF_STATE_EMPTY;		/* For the first iteration */
+	fsg->common->usb_amount_left = nkeep + fsg->common->residue;
+	while (fsg->common->usb_amount_left > 0) {
+
+		/* Wait for the next buffer to be free */
+		while (bh->state != BUF_STATE_EMPTY) {
+			rc = sleep_thread(fsg->common);
+			if (rc)
+				return rc;
+		}
+
+		nsend = min(fsg->common->usb_amount_left, FSG_BUFLEN);
+		memset(bh->buf + nkeep, 0, nsend - nkeep);
+		bh->inreq->length = nsend;
+		bh->inreq->zero = 0;
+		start_transfer(fsg, fsg->bulk_in, bh->inreq,
+				&bh->inreq_busy, &bh->state);
+		bh = fsg->common->next_buffhd_to_fill = bh->next;
+		fsg->common->usb_amount_left -= nsend;
+		nkeep = 0;
+	}
+	return 0;
+}
+
 static int throw_away_data(struct fsg_common *common)
 {
 	struct fsg_buffhd	*bh;
@@ -1918,7 +1948,7 @@ static int finish_reply(struct fsg_common *common)
 		 * specification, which requires us to pad the data if we
 		 * don't halt the endpoint.  Presumably nobody will mind.)
 		 */
-		} else {
+		} else if (common->can_stall) {
 			bh->inreq->zero = 1;
 			START_TRANSFER_OR(common, bulk_in, bh->inreq,
 					  &bh->inreq_busy, &bh->state)
@@ -1926,8 +1956,13 @@ static int finish_reply(struct fsg_common *common)
 				 * common->fsg is NULL */
 				rc = -EIO;
 			common->next_buffhd_to_fill = bh->next;
-			if (common->can_stall)
+			if (common->fsg)
 				rc = halt_bulk_in_endpoint(common->fsg);
+		} else if (fsg_is_set(common)) {
+			rc = pad_with_zeros(common->fsg);
+		} else {
+			/* Don't know what to do if common->fsg is NULL */
+			rc = -EIO;
 		}
 		break;
 
@@ -1936,9 +1971,6 @@ static int finish_reply(struct fsg_common *common)
 	case DATA_DIR_FROM_HOST:
 		if (common->residue == 0) {
 			/* Nothing to receive */
-		/* Don't know what to do if common->fsg is NULL */
-		} else if (!fsg_is_set(common)) {
-			rc = -EIO;
 
 		/* Did the host stop sending unexpectedly early? */
 		} else if (common->short_packet_received) {
@@ -2708,7 +2740,7 @@ static int fsg_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	struct fsg_dev *fsg = fsg_from_func(f);
 	fsg->common->new_fsg = fsg;
 	raise_exception(fsg->common, FSG_STATE_CONFIG_CHANGE);
-	return USB_GADGET_DELAYED_STATUS;
+	return 0;
 }
 
 static void fsg_disable(struct usb_function *f)
@@ -3459,7 +3491,6 @@ static struct fsg_common *fsg_common_init(struct fsg_common *common,
 	common->gadget = gadget;
 	common->ep0 = gadget->ep0;
 	common->ep0req = cdev->req;
-	common->cdev = cdev;
 
 	/* Maybe allocate device-global string IDs, and patch descriptors */
 	if (fsg_strings[FSG_STRING_INTERFACE].id == 0) {
@@ -3616,7 +3647,6 @@ buffhds_first_it:
 	INFO(common, "Number of LUNs=%d\n", common->nluns);
 
 	pathbuf = kmalloc(PATH_MAX, GFP_KERNEL);
-	if (pathbuf) {
 		for (i = 0, nluns = common->nluns, curlun = common->luns;
 		     i < nluns;
 		     ++curlun, ++i) {
@@ -3630,12 +3660,6 @@ buffhds_first_it:
 						p = "(error)";
 				}
 			}
-			LDBG(curlun, "LUN: %s%s%sfile: %s\n",
-			      curlun->removable ? "removable " : "",
-			      curlun->ro ? "read only " : "",
-			      curlun->cdrom ? "CD-ROM " : "",
-			      p);
-		}
 		LINFO(curlun, "LUN: %s%s%sfile: %s\n",
 		      curlun->removable ? "removable " : "",
 		      curlun->ro ? "read only " : "",

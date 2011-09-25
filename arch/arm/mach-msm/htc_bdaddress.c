@@ -22,7 +22,6 @@
 #define MAX_BT_SIZE 0x8U
 
 static unsigned char bt_bd_ram[MAX_BT_SIZE];
-static char bdaddress[20];
 
 static unsigned char *get_bt_bd_ram(void)
 {
@@ -52,6 +51,29 @@ static int __init parse_tag_bt(const struct tag *tag)
 }
 __tagtable(ATAG_BLUETOOTH, parse_tag_bt);
 
+#if defined(CONFIG_SERIAL_MSM_HS) && defined(CONFIG_SERIAL_MSM_HS_PURE_ANDROID)
+
+#define ATAG_BDADDR_SIZE 4
+#define BDADDR_STR_SIZE 18
+
+static char bdaddr[BDADDR_STR_SIZE];
+
+void bt_export_bd_address(void)
+{
+	unsigned char cTemp[6];
+
+	memcpy(cTemp, get_bt_bd_ram(), 6);
+	sprintf(bdaddr, "%02x:%02x:%02x:%02x:%02x:%02x",
+	cTemp[0], cTemp[1], cTemp[2], cTemp[3], cTemp[4], cTemp[5]);
+	printk(KERN_INFO "BT HW address=%s\n", bdaddr);
+}
+module_param_string(bdaddr, bdaddr, sizeof(bdaddr), S_IWUSR | S_IRUGO);
+MODULE_PARM_DESC(bdaddr, "bluetooth address");
+
+
+#else
+static char bdaddress[20];
+
 void bt_export_bd_address(void)
 {
 	unsigned char cTemp[6];
@@ -65,4 +87,4 @@ void bt_export_bd_address(void)
 }
 module_param_string(bdaddress, bdaddress, sizeof(bdaddress), S_IWUSR | S_IRUGO);
 MODULE_PARM_DESC(bdaddress, "BT MAC ADDRESS");
-
+#endif

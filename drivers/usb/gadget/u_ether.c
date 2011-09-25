@@ -1001,9 +1001,7 @@ void gether_disconnect(struct gether *link)
 		spin_lock(&dev->req_lock);
 	}
 	spin_unlock(&dev->req_lock);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 	link->in_ep->driver_data = NULL;
-#endif
 	link->in = NULL;
 
 	usb_ep_disable(link->out_ep);
@@ -1018,9 +1016,7 @@ void gether_disconnect(struct gether *link)
 		spin_lock(&dev->req_lock);
 	}
 	spin_unlock(&dev->req_lock);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 	link->out_ep->driver_data = NULL;
-#endif
 	link->out = NULL;
 
 	/* finish forgetting about this USB link episode */

@@ -15,8 +15,6 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/cdc.h>
 
-#define PREFIX	"ttyHSUSB"
-
 /*
  * One non-multiplexed "serial" I/O port ... there can be several of these
  * on any given USB peripheral device, if it provides enough endpoints.

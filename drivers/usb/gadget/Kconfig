@@ -942,24 +942,6 @@ config USB_ANDROID_ACCESSORY
 	help
 	  Provides Android USB Accessory support for android gadget driver.
 
-config USB_F_SERIAL_SMD
-	boolean "generic serial function driver over SMD"
-	depends on USB_ANDROID && MSM_SMD
-	default n
-	help
-          Gadget serial driver is one way to communicate with modem
-          device. This option enables serial driver to communicate
-          to modem device using smd. It makes very minimal changes
-          to Gadget usb serial interface(f_serial.c) and adds
-          separate transport layer u_smd(very similar to u_serial.c)
-          Say "y" to link the driver statically
-
-config USB_ANDROID_USBNET
-	boolean "Android gadget USBNET function for VoIP"
-	depends on USB_ANDROID
-	default n
-	help
-
 config USB_CDC_COMPOSITE
 	tristate "CDC Composite Device (Ethernet and ACM)"
 	depends on NET
@@ -1074,16 +1056,6 @@ config USB_BYPASS_VBUS_NOTIFY
 
 config USB_HUB
 	boolean "USB HUB driver"
-	depends on USB_ANDROID
-	default n
-
-config USB_GADGET_DYNAMIC_ENDPOINT
-	boolean "USB GADGET ALLOCATE DYNAMIC ENDPOINT"
-	depends on USB_ANDROID
-	default n
-
-config USB_GADGET_VERIZON_PRODUCT_ID
-	boolean "Verizon Product ID Mapping"
 	depends on USB_ANDROID
 	default n
 

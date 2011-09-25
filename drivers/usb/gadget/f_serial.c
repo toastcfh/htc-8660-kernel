@@ -243,33 +243,6 @@ gser_unbind(struct usb_configuration *c, struct usb_function *f)
 	kfree(func_to_gser(f));
 }
 
-static void
-gser_release(struct usb_configuration *c, struct usb_function *f)
-{
-	struct f_gser *gser = func_to_gser(f);
-	if (gser->port.in)
-		gser->port.in->driver_data = NULL;
-	if (gser->port.in)
-		gser->port.out->driver_data = NULL;
-
-	if (gadget_is_dualspeed(c->cdev->gadget))
-		usb_free_descriptors(f->hs_descriptors);
-	usb_free_descriptors(f->descriptors);
-#ifdef CONFIG_MODEM_SUPPORT
-#ifdef DISABLE_SERIAL_NOTIFY
-	if (strncmp(gser->port.func.name, "serial", 6)) {
-#endif
-		if (gser->notify) {
-			gser->notify->driver_data = NULL;
-			gs_free_req(gser->notify, gser->notify_req);
-		}
-#ifdef DISABLE_SERIAL_NOTIFY
-	}
-#endif
-#endif
-	usb_interface_id_remove(c, 1);
-}
-
 /**
  * gser_bind_config - add a generic serial function to a configuration
  * @c: the configuration to support the serial instance
@@ -286,12 +259,6 @@ int __init gser_bind_config(struct usb_configuration *c, u8 port_num)
 {
 	struct f_gser	*gser;
 	int		status;
-	struct port_info *p = &gserial_ports[port_num];
-
-	if (p->func_type == USB_FSER_FUNC_NONE) {
-		pr_info("%s: non function port : %d\n", __func__, port_num);
-		return 0;
-	}
 
 	/* REVISIT might want instance-specific strings to help
 	 * distinguish instances ...
@@ -311,7 +278,6 @@ int __init gser_bind_config(struct usb_configuration *c, u8 port_num)
 		return -ENOMEM;
 
 	gser->port_num = port_num;
-	gser->transport = p->transport;
 
 	gser->port.func.name = "gser";
 	gser->port.func.strings = gser_strings;

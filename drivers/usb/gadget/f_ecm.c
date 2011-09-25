@@ -484,11 +484,6 @@ static int ecm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		if (ecm->notify->driver_data) {
 			VDBG(cdev, "reset ecm control %d\n", intf);
 			usb_ep_disable(ecm->notify);
-#ifdef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
-			ecm->notify_desc = ep_choose(cdev->gadget,
-					ecm->hs.notify,
-					ecm->fs.notify);
-#endif
 		} else {
 			VDBG(cdev, "init ecm ctrl %d\n", intf);
 			ecm->notify_desc = ep_choose(cdev->gadget,
@@ -573,9 +568,7 @@ static void ecm_disable(struct usb_function *f)
 
 	if (ecm->notify->driver_data) {
 		usb_ep_disable(ecm->notify);
-#ifndef CONFIG_USB_GADGET_DYNAMIC_ENDPOINT
 		ecm->notify->driver_data = NULL;
-#endif
 		ecm->notify_desc = NULL;
 	}
 }
