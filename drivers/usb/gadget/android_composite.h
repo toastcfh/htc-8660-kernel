@@ -27,9 +27,13 @@ struct android_usb_function {
 };
 
 struct android_usb_product {
-	/* Default product ID. */
-	__u16 product_id;
+	/* Vendor ID for this set of functions.
+	 * Default vendor_id in platform data will be used if this is zero.
+	 */
 	__u16 vendor_id;
+
+	/* Product ID for this set of functions. */
+	__u16 product_id;
 
 	/* List of function names associated with this product.
 	 * This is used to compute the USB product ID dynamically
@@ -69,15 +73,6 @@ struct android_usb_platform_data {
 	 */
 	int num_functions;
 	char **functions;
-	void (*enable_fast_charge)(bool enable);
-	bool RndisDisableMPDecision;
-	/* Re-match the product ID.
-	 * In some devices, the product id is specified by vendor request.
-	 *
-	 * @param product_id: the common product id
-	 * @param intrsharing: 1 for internet sharing, 0 for internet pass through
-	 */
-	int (*match)(int product_id, int intrsharing);
 };
 
 /* Platform data for "usb_mass_storage" driver. */
@@ -89,12 +84,6 @@ struct usb_mass_storage_platform_data {
 
 	/* number of LUNS */
 	int nluns;
-
-	/* bitmap of lun to indicate cdrom disk.
-	 * NOTE: Only support one cdrom disk
-	 * and it must be located in last lun */
-	int cdrom_lun;
-	int cdrom_cttype;
 };
 
 /* Platform data for USB ethernet driver. */
@@ -104,14 +93,9 @@ struct usb_ether_platform_data {
 	const char *vendorDescr;
 };
 
-#if defined(CONFIG_MACH_HOLIDAY)
-extern u8 in_usb_tethering;
-#endif
-
 extern void android_register_function(struct android_usb_function *f);
-extern int android_get_model_id(void);
+
 extern void android_enable_function(struct usb_function *f, int enable);
-extern int android_switch_function(unsigned func);
-extern unsigned android_switch_sum(void);
+
 
 #endif	/* __LINUX_USB_ANDROID_H */
