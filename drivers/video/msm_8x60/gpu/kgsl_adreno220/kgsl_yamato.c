@@ -618,7 +618,10 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 			      KGSL_DEVICE_MEMSTORE_OFFSET(ref_wait_ts),
 			      init_reftimestamp);
 
-	kgsl_yamato_regwrite(device, REG_RBBM_DEBUG, 0x000C0000);
+	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
+		kgsl_yamato_regwrite(device, REG_RBBM_DEBUG, 0x000C0000);
+	else
+		kgsl_yamato_regwrite(device, REG_RBBM_DEBUG, 0x00080000);
 
 	kgsl_yamato_regwrite(device, REG_RBBM_INT_CNTL, GSL_RBBM_INT_MASK);
 
