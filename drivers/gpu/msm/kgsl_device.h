@@ -180,6 +180,7 @@ struct kgsl_device {
 	struct wake_lock idle_wakelock;
 	struct kgsl_pwrscale pwrscale;
 	struct kobject pwrscale_kobj;
+	struct work_struct ts_expired_ws;
 };
 
 struct kgsl_context {
