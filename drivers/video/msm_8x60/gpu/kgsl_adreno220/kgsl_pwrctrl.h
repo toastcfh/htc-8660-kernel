@@ -77,6 +77,7 @@ struct kgsl_pwrctrl {
 	bool pwrrail_first;
 	s64 time;
 	unsigned int no_switch_cnt;
+	unsigned int skip_cnt;
 	unsigned int idle_pass;
 };
 
