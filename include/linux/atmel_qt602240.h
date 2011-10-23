@@ -385,7 +385,6 @@ struct atmel_i2c_platform_data {
 	uint8_t abs_width_max;
 	int gpio_irq;
 	int (*power)(int on);
-	uint8_t unlock_attr;
 	int8_t config_T6[6];
 	int8_t config_T7[3];
 	int8_t config_T8[10];
@@ -415,8 +414,7 @@ struct atmel_i2c_platform_data {
 	int8_t wlc_config[7];
 	uint8_t wlc_freq[5];
 	int8_t noise_config[3];
-	uint8_t call_tchthr[2];
-	uint8_t locking_config[1];
+	uint8_t cal_tchthr[2];
 	uint16_t filter_level[4];
 	uint8_t GCAF_level[5];
 };
