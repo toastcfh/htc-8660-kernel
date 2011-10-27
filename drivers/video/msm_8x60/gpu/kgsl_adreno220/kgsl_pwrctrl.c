@@ -80,7 +80,8 @@ void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 		new_level >= pwr->thermal_pwrlevel &&
 		new_level != pwr->active_pwrlevel) {
 		pwr->active_pwrlevel = new_level;
-		if (pwr->power_flags & KGSL_PWRFLAGS_CLK_ON)
+		if ((pwr->power_flags & KGSL_PWRFLAGS_CLK_ON) ||
+			(device->state == KGSL_STATE_NAP))
 			clk_set_rate(pwr->grp_clks[0],
 					pwr->pwrlevels[pwr->active_pwrlevel].
 					gpu_freq);
