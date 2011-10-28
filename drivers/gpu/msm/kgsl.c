@@ -31,6 +31,7 @@
 #include "kgsl_log.h"
 #include "kgsl_sharedmem.h"
 #include "kgsl_device.h"
+#include "kgsl_trace.h"
 
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "kgsl."
@@ -830,9 +831,13 @@ static long kgsl_ioctl_device_waittimestamp(struct kgsl_device_private
 
 	dev_priv->device->active_cnt++;
 
+	trace_kgsl_waittimestamp_entry(dev_priv->device, param);
+
 	result = dev_priv->device->ftbl->waittimestamp(dev_priv->device,
 					param->timestamp,
 					param->timeout);
+
+	trace_kgsl_waittimestamp_exit(dev_priv->device, result);
 
 	/* Fire off any pending suspend operations that are in flight */
 
@@ -958,6 +963,8 @@ static long kgsl_ioctl_rb_issueibcmds(struct kgsl_device_private *dev_priv,
 					     &param->timestamp,
 					     param->flags);
 
+	trace_kgsl_issueibcmds(dev_priv->device, param, result);
+
 	if (result != 0)
 		goto free_ibdesc;
 
@@ -990,6 +997,8 @@ static long kgsl_ioctl_cmdstream_readtimestamp(struct kgsl_device_private
 	param->timestamp =
 		dev_priv->device->ftbl->readtimestamp(dev_priv->device,
 		param->type);
+
+	trace_kgsl_readtimestamp(dev_priv->device, param);
 
 	return 0;
 }
