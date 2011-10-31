@@ -50,6 +50,8 @@
 #define KGSL_FLAGS_RESERVED2   0x00000080
 #define KGSL_FLAGS_SOFT_RESET  0x00000100
 
+#define KGSL_MAX_PWRLEVELS 5
+
 /* device id */
 enum kgsl_deviceid {
 #if defined(CONFIG_GPU_MSM_KGSL_ADRENO220)
@@ -133,16 +135,21 @@ struct kgsl_shadowprop {
 	unsigned int flags; /* contains KGSL_FLAGS_ values */
 };
 
+struct kgsl_pwrlevel {
+	unsigned int gpu_freq;
+	unsigned int bus_freq;
+};
+
 #if defined(CONFIG_ARCH_MSM7X30) || defined(CONFIG_ARCH_MSM8X60)
 #include <mach/msm_bus.h>
 struct kgsl_platform_data {
-	unsigned int high_axi_2d;
-	unsigned int high_axi_3d;
-	unsigned int max_grp2d_freq;
-	unsigned int min_grp2d_freq;
+	struct kgsl_pwrlevel pwrlevel_2d[KGSL_MAX_PWRLEVELS];
+	int init_level_2d;
+	int num_levels_2d;
+	struct kgsl_pwrlevel pwrlevel_3d[KGSL_MAX_PWRLEVELS];
+	int init_level_3d;
+	int num_levels_3d;
 	int (*set_grp2d_async)(void);
-	unsigned int max_grp3d_freq;
-	unsigned int min_grp3d_freq;
 	int (*set_grp3d_async)(void);
 	const char *imem_clk_name;
 	const char *imem_pclk_name;
@@ -158,6 +165,7 @@ struct kgsl_platform_data {
 	struct msm_bus_scale_pdata *grp2d0_bus_scale_table;
 	struct msm_bus_scale_pdata *grp2d1_bus_scale_table;
 	unsigned int nap_allowed;
+	unsigned int  idle_pass;
 #if  defined(CONFIG_GPU_MSM_KGSL_ADRENO220)
 	unsigned int pt_va_size;
 	unsigned int pt_max_count;
@@ -274,6 +282,15 @@ struct kgsl_cmdstream_freememontimestamp {
 };
 
 #define IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP \
+	_IOW(KGSL_IOC_TYPE, 0x12, struct kgsl_cmdstream_freememontimestamp)
+
+/* Previous versions of this header had incorrectly defined
+   IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP as a read-only ioctl instead
+   of a write only ioctl.  To ensure binary compatability, the following
+   #define will be used to intercept the incorrect ioctl
+*/
+
+#define IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP_OLD \
 	_IOR(KGSL_IOC_TYPE, 0x12, struct kgsl_cmdstream_freememontimestamp)
 
 /* create a draw context, which is used to preserve GPU state.

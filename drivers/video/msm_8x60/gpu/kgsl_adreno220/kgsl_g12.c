@@ -274,7 +274,7 @@ int kgsl_g12_setstate(struct kgsl_device *device, uint32_t flags)
 int __init
 kgsl_g12_init_pwrctrl(struct kgsl_device *device)
 {
-	int result = 0;
+	int i, result = 0;
 	const char *pclk_name;
 	struct clk *clk, *pclk;
 	struct platform_device *pdev = kgsl_driver.pdev;
@@ -330,19 +330,28 @@ kgsl_g12_init_pwrctrl(struct kgsl_device *device)
 	if (pdata->set_grp2d_async != NULL)
 		pdata->set_grp2d_async();
 
-	if (pdata->max_grp2d_freq) {
-		device->pwrctrl.clk_freq[KGSL_MIN_FREQ] =
-			clk_round_rate(clk, pdata->min_grp2d_freq);
-		device->pwrctrl.clk_freq[KGSL_MAX_FREQ] =
-			clk_round_rate(clk, pdata->max_grp2d_freq);
-		clk_set_rate(clk, device->pwrctrl.clk_freq[KGSL_MIN_FREQ]);
+	if (pdata->num_levels_2d > KGSL_MAX_PWRLEVELS) {
+		result = -EINVAL;
+		goto done;
 	}
+	device->pwrctrl.num_pwrlevels = pdata->num_levels_2d;
+	device->pwrctrl.active_pwrlevel = pdata->init_level_2d;
+	for (i = 0; i < pdata->num_levels_2d; i++) {
+		device->pwrctrl.pwrlevels[i].gpu_freq =
+			(pdata->pwrlevel_2d[i].gpu_freq > 0) ?
+			clk_round_rate(clk, pdata->pwrlevel_2d[i].gpu_freq) : 0;
+		device->pwrctrl.pwrlevels[i].bus_freq =
+			pdata->pwrlevel_2d[i].bus_freq;
+	}
+	/* Do not set_rate for cores in sync with AXI. */
+	if (pdata->pwrlevel_2d[0].gpu_freq > 0)
+		clk_set_rate(clk, device->pwrctrl.
+			pwrlevels[KGSL_DEFAULT_PWRLEVEL]. gpu_freq);
 
 	device->pwrctrl.power_flags = KGSL_PWRFLAGS_CLK_OFF |
 		KGSL_PWRFLAGS_AXI_OFF | KGSL_PWRFLAGS_POWER_OFF |
 		KGSL_PWRFLAGS_IRQ_OFF;
 	device->pwrctrl.nap_allowed = pdata->nap_allowed;
-	device->pwrctrl.clk_freq[KGSL_AXI_HIGH] = pdata->high_axi_2d;
 	device->pwrctrl.grp_clk = clk;
 	device->pwrctrl.grp_src_clk = clk;
 	device->pwrctrl.grp_pclk = pclk;
@@ -360,7 +369,10 @@ kgsl_g12_init_pwrctrl(struct kgsl_device *device)
 	if (IS_ERR(clk))
 		clk = NULL;
 	else
-		clk_set_rate(clk, device->pwrctrl.clk_freq[KGSL_AXI_HIGH]*1000);
+		clk_set_rate(clk,
+			device->pwrctrl.
+				pwrlevels[device->pwrctrl.active_pwrlevel].
+					 bus_freq);
 	device->pwrctrl.ebi1_clk = clk;
 
 	if (bus_table) {
@@ -535,6 +547,7 @@ static int kgsl_g12_start(struct kgsl_device *device, unsigned int init_ram)
 
 	device->state = KGSL_STATE_INIT;
 	device->requested_state = KGSL_STATE_NONE;
+	KGSL_PWR_INFO("state -> INIT, device %d\n", device->id);
 
 	kgsl_pwrctrl_pwrrail(device, KGSL_PWRFLAGS_POWER_ON);
 	kgsl_pwrctrl_clk(device, KGSL_PWRFLAGS_CLK_ON);
@@ -907,6 +920,7 @@ static int kgsl_g12_wait(struct kgsl_device *device,
 	else if (timeout == 0) {
 		status = -ETIMEDOUT;
 		device->state = KGSL_STATE_HUNG;
+		KGSL_PWR_INFO("state -> HUNG, device %d\n", device->id);
 	}
 	else
 		status = timeout;
@@ -962,6 +976,11 @@ static long kgsl_g12_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
+static unsigned int kgsl_g12_idle_calc(struct kgsl_device *device)
+{
+	return device->pwrctrl.time;
+}
+
 int kgsl_g12_getfunctable(struct kgsl_functable *ftbl)
 {
 
@@ -987,6 +1006,7 @@ int kgsl_g12_getfunctable(struct kgsl_functable *ftbl)
 	ftbl->device_ioctl = kgsl_g12_ioctl;
 	ftbl->device_setup_pt = kgsl_g12_setup_pt;
 	ftbl->device_cleanup_pt = kgsl_g12_cleanup_pt;
+	ftbl->device_idle_calc = kgsl_g12_idle_calc;
 
 	return KGSL_SUCCESS;
 }

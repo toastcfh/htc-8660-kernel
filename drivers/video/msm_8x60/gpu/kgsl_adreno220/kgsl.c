@@ -125,7 +125,8 @@ static int kgsl_runpending_unlocked(struct kgsl_device *device)
 static void kgsl_check_idle_locked(struct kgsl_device *device)
 {
 	if (device->pwrctrl.nap_allowed == true &&
-	    device->state & KGSL_STATE_ACTIVE) {
+	    device->state == KGSL_STATE_ACTIVE &&
+		device->requested_state == KGSL_STATE_NONE) {
 		device->requested_state = KGSL_STATE_NAP;
 		if (kgsl_pwrctrl_sleep(device) == KGSL_FAILURE)
 			mod_timer(&device->idle_timer,
@@ -263,7 +264,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 	struct kgsl_device *device;
 	unsigned int nap_allowed_saved;
 
-	KGSL_DRV_DBG("suspend start\n");
+	KGSL_PWR_INFO("suspend start\n");
 
 	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
 		device = kgsl_driver.devp[i];
@@ -295,8 +296,12 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 			INIT_COMPLETION(device->hwaccess_gate);
 			device->ftbl.device_suspend_context(device);
 			device->ftbl.device_stop(device);
+			KGSL_PWR_INFO("state -> SUSPEND, device %d\n",
+				device->id);
 			break;
 		default:
+			KGSL_PWR_ERR("suspend fail, device %d\n",
+					device->id);
 			mutex_unlock(&device->mutex);
 			return KGSL_FAILURE;
 		}
@@ -306,7 +311,7 @@ static int kgsl_suspend(struct platform_device *dev, pm_message_t state)
 
 		mutex_unlock(&device->mutex);
 	}
-	KGSL_DRV_DBG("suspend end\n");
+	KGSL_PWR_INFO("suspend end\n");
 	return KGSL_SUCCESS;
 }
 
@@ -316,7 +321,7 @@ static int kgsl_resume(struct platform_device *dev)
 	int i, status = KGSL_SUCCESS;
 	struct kgsl_device *device;
 
-	KGSL_DRV_DBG("resume start\n");
+	KGSL_PWR_INFO("resume start\n");
 
 	for (i = 0; i < KGSL_DEVICE_MAX; i++) {
 		device = kgsl_driver.devp[i];
@@ -329,8 +334,10 @@ static int kgsl_resume(struct platform_device *dev)
 			status = device->ftbl.device_start(device, 0);
 			if (status == KGSL_SUCCESS) {
 				device->state = KGSL_STATE_ACTIVE;
+				KGSL_PWR_WARN("state -> ACTIVE, device %d\n",
+							 device->id);
 			} else {
-				KGSL_DRV_ERR("resume failed for dev->id=%d\n",
+				KGSL_PWR_ERR("resume failed, device %d\n",
 					device->id);
 				device->state = KGSL_STATE_INIT;
 				mutex_unlock(&device->mutex);
@@ -342,7 +349,7 @@ static int kgsl_resume(struct platform_device *dev)
 		device->requested_state = KGSL_STATE_NONE;
 		mutex_unlock(&device->mutex);
 	}
-	KGSL_DRV_DBG("resume end\n");
+	KGSL_PWR_INFO("resume end\n");
 	return status;
 }
 
@@ -468,6 +475,7 @@ static int kgsl_release(struct inode *inodep, struct file *filep)
 		KGSL_DRV_VDBG("last_release\n");
 		result = device->ftbl.device_stop(device);
 		device->state = KGSL_STATE_INIT;
+		KGSL_PWR_INFO("state -> INIT, device %d\n", device->id);
 	}
 	/* clean up any to-be-freed entries that belong to this
 	 * process and this device
@@ -539,11 +547,13 @@ static int kgsl_open(struct inode *inodep, struct file *filep)
 
 	if (atomic_inc_and_test(&device->open_count)) {
 		result = device->ftbl.device_start(device, KGSL_TRUE);
-		if (result != 0)
+		if (result != 0) {
 			KGSL_DRV_ERR("device_start() failed, minor=%d\n",
 					minor);
-		else
+		} else {
 			device->state = KGSL_STATE_ACTIVE;
+			KGSL_PWR_INFO("state -> ACTIVE, device %d\n", minor);
+		}
 	}
 
 	mutex_unlock(&device->mutex);
@@ -1598,6 +1608,7 @@ static long kgsl_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
 		break;
 
 	case IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP:
+	case IOCTL_KGSL_CMDSTREAM_FREEMEMONTIMESTAMP_OLD:
 		result =
 		    kgsl_ioctl_cmdstream_freememontimestamp(dev_priv,
 						    (void __user *)arg);
@@ -1726,12 +1737,12 @@ struct kgsl_driver kgsl_driver  = {
 static void kgsl_device_unregister(void)
 {
 	int j;
-	struct kgsl_device *device;
 
 	for (j = 0; j < kgsl_driver.num_devs; j++) {
+		struct kgsl_device *device = kgsl_driver.devp[j];
+
 		device_destroy(kgsl_driver.class,
 					MKDEV(MAJOR(kgsl_driver.dev_num), j));
-		device =  kgsl_driver.devp[j];
 		kgsl_pwrctrl_uninit_sysfs(device);
 	}
 
@@ -1828,7 +1839,9 @@ static int kgsl_register_dev(int num_devs)
 			goto error_device_create;
 		}
 
-		kgsl_pwrctrl_init_sysfs(device);
+		err = kgsl_pwrctrl_init_sysfs(device);
+		if (err)
+			goto error_device_create;
 	}
 
 	/* add char dev(s) */

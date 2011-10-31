@@ -244,6 +244,8 @@ irqreturn_t kgsl_yamato_isr(int irq, void *data)
 	if (device->pwrctrl.nap_allowed == true) {
 		device->requested_state = KGSL_STATE_NAP;
 		schedule_work(&device->idle_check_ws);
+	} else if (device->pwrctrl.idle_pass == true) {
+		schedule_work(&device->idle_check_ws);
 	}
 	/* Reset the time-out in our idle timer */
 	mod_timer(&device->idle_timer,
@@ -476,7 +478,7 @@ kgsl_yamato_getchipid(struct kgsl_device *device)
 int __init
 kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 {
-	int result = 0;
+	int i, result = 0;
 	struct clk *clk, *grp_clk;
 	struct platform_device *pdev = kgsl_driver.pdev;
 	struct kgsl_platform_data *pdata = pdev->dev.platform_data;
@@ -511,13 +513,25 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 	/* put the AXI bus into asynchronous mode with the graphics cores */
 	if (pdata->set_grp3d_async != NULL)
 		pdata->set_grp3d_async();
-	if (pdata->max_grp3d_freq) {
-		device->pwrctrl.clk_freq[KGSL_MIN_FREQ] =
-			clk_round_rate(clk, pdata->min_grp3d_freq);
-		device->pwrctrl.clk_freq[KGSL_MAX_FREQ] =
-			clk_round_rate(clk, pdata->max_grp3d_freq);
-		clk_set_rate(clk, device->pwrctrl.clk_freq[KGSL_MIN_FREQ]);
+
+	if (pdata->num_levels_3d > KGSL_MAX_PWRLEVELS) {
+		result = -EINVAL;
+		goto done;
 	}
+	device->pwrctrl.num_pwrlevels = pdata->num_levels_3d;
+	device->pwrctrl.active_pwrlevel = pdata->init_level_3d;
+	for (i = 0; i < pdata->num_levels_3d; i++) {
+		device->pwrctrl.pwrlevels[i].gpu_freq =
+			(pdata->pwrlevel_3d[i].gpu_freq > 0) ?
+			clk_round_rate(clk, pdata->pwrlevel_3d[i].
+				gpu_freq) : 0;
+		device->pwrctrl.pwrlevels[i].bus_freq =
+			pdata->pwrlevel_3d[i].bus_freq;
+	}
+	/* Do not set_rate for targets in sync with AXI */
+	if (pdata->pwrlevel_3d[0].gpu_freq > 0)
+		clk_set_rate(clk, device->pwrctrl.
+			pwrlevels[KGSL_DEFAULT_PWRLEVEL].gpu_freq);
 
 	if (pdata->imem_clk_name != NULL) {
 		clk = clk_get(&pdev->dev, pdata->imem_clk_name);
@@ -549,7 +563,7 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		KGSL_PWRFLAGS_AXI_OFF | KGSL_PWRFLAGS_POWER_OFF |
 		KGSL_PWRFLAGS_IRQ_OFF;
 	device->pwrctrl.nap_allowed = pdata->nap_allowed;
-	device->pwrctrl.clk_freq[KGSL_AXI_HIGH] = pdata->high_axi_3d;
+	device->pwrctrl.idle_pass = pdata->idle_pass;
 	/* per test, io_fraction default value is set to 33% for best
 	   power/performance result */
 	device->pwrctrl.io_fraction = 33;
@@ -559,7 +573,9 @@ kgsl_yamato_init_pwrctrl(struct kgsl_device *device)
 		device->pwrctrl.ebi1_clk = NULL;
 	else
 		clk_set_rate(device->pwrctrl.ebi1_clk,
-				device->pwrctrl.clk_freq[KGSL_AXI_HIGH] * 1000);
+			device->pwrctrl.
+				pwrlevels[device->pwrctrl.active_pwrlevel].
+					 bus_freq);
 	if (pdata->grp3d_bus_scale_table != NULL) {
 		device->pwrctrl.pcl =
 		msm_bus_scale_register_client(pdata->grp3d_bus_scale_table);
@@ -767,7 +783,6 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	int status = -EINVAL;
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 	int init_reftimestamp = 0x7fffffff;
-	unsigned int override1, override2, i;
 
 	KGSL_DRV_VDBG("enter (device=%p)\n", device);
 
@@ -834,25 +849,11 @@ static int kgsl_yamato_start(struct kgsl_device *device, unsigned int init_ram)
 	kgsl_yamato_regwrite(device, REG_SQ_PS_PROGRAM, 0x00000000);
 
 
-	if (device->chip_id != KGSL_CHIPID_LEIA_REV470){
-		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0);
+	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0);
+	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
 		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0);
-	}
-	else{
-		i = 3; /*try writing override1 & 2, three times.*/
-		while(i){
-			kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE1, 0x7BFFFFFA);
-			kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE1, &override1);
-			kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0x000001F4);
-			kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &override2);
-			if (((override1 & 0x7BFFFFFA) == 0x7BFFFFFA) &&
-				((override2 & 0x000001F4) == 0x000001F4))
-				break;
-			KGSL_DRV_ERR("OVERRIDE1 = 0x%x, OVERRIDE2 = 0x%x !!\n",
-								override1, override2);
-			i--;
-		}
-        }
+	else
+		kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, 0x80);
 
 	kgsl_sharedmem_set(&device->memstore, 0, 0,
 			   device->memstore.size);
@@ -1346,6 +1347,54 @@ static long kgsl_yamato_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
+static inline s64 kgsl_yamato_ticks_to_us(u32 ticks, u32 gpu_freq)
+{
+	gpu_freq /= 1000000;
+	return ticks / gpu_freq;
+}
+
+static unsigned int kgsl_yamato_idle_calc(struct kgsl_device *device)
+{
+	unsigned int ret, reg;
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
+
+	/* In order to calculate idle you have to have run the algorithm *
+	 * at least once to get a start time. */
+	if (pwr->time != 0) {
+		s64 total_time, busy_time, tmp;
+		/* Stop the performance moniter and read the current *
+		 * busy cycles. */
+		kgsl_yamato_regwrite(device,
+							 REG_CP_PERFMON_CNTL,
+							 REG_PERF_MODE_CNT |
+							 REG_PERF_STATE_FREEZE);
+		kgsl_yamato_regread(device, REG_RBBM_PERFCOUNTER1_LO, &reg);
+		tmp = ktime_to_us(ktime_get());
+		total_time = tmp - pwr->time;
+		pwr->time = tmp;
+		busy_time = kgsl_yamato_ticks_to_us(reg, device->pwrctrl.
+				pwrlevels[device->pwrctrl.active_pwrlevel].
+				gpu_freq);
+		ret = total_time - busy_time;
+		kgsl_yamato_regwrite(device,
+							 REG_CP_PERFMON_CNTL,
+							 REG_PERF_MODE_CNT |
+							 REG_PERF_STATE_RESET);
+		} else {
+			pwr->time = ktime_to_us(ktime_get());
+			ret = 0;
+		}
+
+	/* re-enable the performance moniters */
+	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &reg);
+	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, (reg | 0x40));
+	kgsl_yamato_regwrite(device, REG_RBBM_PERFCOUNTER1_SELECT, 0x1);
+	kgsl_yamato_regwrite(device,
+			REG_CP_PERFMON_CNTL,
+			REG_PERF_MODE_CNT | REG_PERF_STATE_ENABLE);
+	return ret;
+}
+
 int kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 {
 	if (ftbl == NULL)
@@ -1370,6 +1419,7 @@ int kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 	ftbl->device_ioctl = kgsl_yamato_ioctl;
 	ftbl->device_setup_pt = kgsl_yamato_setup_pt;
 	ftbl->device_cleanup_pt = kgsl_yamato_cleanup_pt;
+	ftbl->device_idle_calc = kgsl_yamato_idle_calc;
 
 	return KGSL_SUCCESS;
 }

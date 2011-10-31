@@ -49,16 +49,7 @@
 #define KGSL_PWRFLAGS_IRQ_ON		0x00000040
 #define KGSL_PWRFLAGS_IRQ_OFF		0x00000080
 
-#define BW_INIT 0
-#define BW_MAX  1
-
-enum kgsl_clk_freq {
-	KGSL_AXI_HIGH = 0,
-	KGSL_MIN_FREQ = 1,
-	KGSL_DEFAULT_FREQ = 2,
-	KGSL_MAX_FREQ = 3,
-	KGSL_NUM_FREQ = 4
-};
+#define KGSL_DEFAULT_PWRLEVEL 1
 
 struct kgsl_pwrctrl {
 	int interrupt_num;
@@ -71,7 +62,10 @@ struct kgsl_pwrctrl {
 	struct clk *imem_clk;
 	struct clk *imem_pclk;
 	unsigned int power_flags;
-	unsigned int clk_freq[KGSL_NUM_FREQ];
+	struct kgsl_pwrlevel pwrlevels[KGSL_MAX_PWRLEVELS];
+	unsigned int active_pwrlevel;
+	int thermal_pwrlevel;
+	unsigned int num_pwrlevels;
 	unsigned int interval_timeout;
 	struct regulator *gpu_reg;
 	uint32_t pcl;
@@ -79,6 +73,9 @@ struct kgsl_pwrctrl {
 	unsigned int io_fraction;
 	unsigned int io_count;
 	struct kgsl_yamato_context *suspended_ctxt;
+	s64 time;
+	unsigned int no_switch_cnt;
+	unsigned int idle_pass;
 };
 
 int kgsl_pwrctrl_clk(struct kgsl_device *device, unsigned int pwrflag);
@@ -92,6 +89,7 @@ void kgsl_pre_hwaccess(struct kgsl_device *device);
 void kgsl_check_suspended(struct kgsl_device *device);
 int kgsl_pwrctrl_sleep(struct kgsl_device *device);
 int kgsl_pwrctrl_wake(struct kgsl_device *device);
+unsigned long  kgsl_get_clkrate(struct clk *clk);
 
 int kgsl_pwrctrl_init_sysfs(struct kgsl_device *device);
 void kgsl_pwrctrl_uninit_sysfs(struct kgsl_device *device);

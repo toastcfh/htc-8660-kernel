@@ -34,6 +34,7 @@ unsigned int kgsl_drv_log = KGSL_LOG_LEVEL_DEFAULT;
 unsigned int kgsl_cmd_log = KGSL_LOG_LEVEL_DEFAULT;
 unsigned int kgsl_ctxt_log = KGSL_LOG_LEVEL_DEFAULT;
 unsigned int kgsl_mem_log = KGSL_LOG_LEVEL_DEFAULT;
+unsigned int kgsl_pwr_log = KGSL_LOG_LEVEL_DEFAULT;
 unsigned int kgsl_cff_dump_enable;
 
 #ifdef CONFIG_MSM_KGSL_MMU
@@ -105,6 +106,21 @@ static int kgsl_mem_log_get(void *data, u64 *val)
 
 DEFINE_SIMPLE_ATTRIBUTE(kgsl_mem_log_fops, kgsl_mem_log_get,
 			kgsl_mem_log_set, "%llu\n");
+
+
+static int kgsl_pwr_log_set(void *data, u64 val)
+{
+	return kgsl_log_set(&kgsl_pwr_log, data, val);
+}
+
+static int kgsl_pwr_log_get(void *data, u64 *val)
+{
+	*val = kgsl_pwr_log;
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(kgsl_pwr_log_fops, kgsl_pwr_log_get,
+						kgsl_pwr_log_set, "%llu\n");
 
 #ifdef CONFIG_MSM_KGSL_MMU
 static int kgsl_cache_enable_set(void *data, u64 val)
@@ -490,6 +506,8 @@ int kgsl_debug_init(void)
 				&kgsl_drv_log_fops);
 	debugfs_create_file("log_level_mem", 0644, dent, 0,
 				&kgsl_mem_log_fops);
+	debugfs_create_file("log_level_pwr", 0644, dent, 0,
+				&kgsl_pwr_log_fops);
 
 	debugfs_create_file("ib_dump",  0600, dent, 0, &kgsl_ib_dump_fops);
 	debugfs_create_file("istore",   0400, dent, 0, &kgsl_istore_fops);

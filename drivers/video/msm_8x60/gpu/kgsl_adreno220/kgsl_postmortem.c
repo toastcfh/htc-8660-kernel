@@ -31,7 +31,7 @@
 #include "kgsl_yamato.h"
 
 #define INVALID_RB_CMD 0xaaaaaaaa
-#define KGSL_TEST_VERSION "SBA 39"
+#define KGSL_TEST_VERSION "SBA 42"
 
 struct pm_id_name {
 	uint32_t id;
@@ -236,7 +236,7 @@ static struct kgsl_process_private*  get_current_process(uint32_t pt_base)
 
 
 	list_for_each_entry(pt, &kgsl_driver.pagetable_list, list) {
-		if (pt->va_base == pt_base) {
+		if (pt->base.gpuaddr == pt_base) {
 			current_pt = pt;
 			break;
 		}
@@ -246,7 +246,7 @@ static struct kgsl_process_private*  get_current_process(uint32_t pt_base)
 		goto done;
 
 	list_for_each_entry(private, &kgsl_driver.process_list, list) {
-		if (private->pagetable == pt) {
+		if (private->pagetable == current_pt) {
 			current_private = private;
 			break;
 		}
@@ -574,10 +574,22 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	static struct ib_list ib_list;
 
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	KGSL_LOG_DUMP("KGSL VERSION %s \n", KGSL_TEST_VERSION);
 
 	mb();
+
+	KGSL_LOG_DUMP("POWER: FLAGS = %08X | ACTIVE POWERLEVEL = %08X",
+			pwr->power_flags, pwr->active_pwrlevel);
+
+	KGSL_LOG_DUMP("POWER: INTERVAL TIMEOUT = %08X ",
+		pwr->interval_timeout);
+
+	KGSL_LOG_DUMP("GRP_CLK = %lu ", kgsl_get_clkrate(pwr->grp_clk));
+
+	KGSL_LOG_DUMP("BUS CLK = %lu ",
+		kgsl_get_clkrate(pwr->ebi1_clk));
 
 	kgsl_regread(device, REG_RBBM_STATUS, &rbbm_status);
 	kgsl_regread(device, REG_RBBM_PM_OVERRIDE1, &r2);
@@ -874,7 +886,7 @@ int kgsl_postmortem_dump(struct kgsl_device *device)
 	KGSL_DRV_FATAL("Dump Finished\n");
 
 	//sleep for keep log
-	hr_msleep(200);
+	hr_msleep(5000);
 
 	/* aleays bug on */
 	BUG_ON(true);

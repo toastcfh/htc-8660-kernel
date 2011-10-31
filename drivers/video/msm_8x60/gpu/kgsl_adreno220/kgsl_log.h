@@ -33,6 +33,7 @@ extern unsigned int kgsl_drv_log;
 extern unsigned int kgsl_cmd_log;
 extern unsigned int kgsl_ctxt_log;
 extern unsigned int kgsl_mem_log;
+extern unsigned int kgsl_pwr_log;
 extern unsigned int kgsl_cff_dump_enable;
 
 struct device *kgsl_driver_getdevnode(void);
@@ -115,5 +116,12 @@ int kgsl_debug_init(void);
 #define KGSL_MEM_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_mem_log, fmt, ##args)
 #define KGSL_MEM_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_mem_log, fmt, ##args)
 #define KGSL_MEM_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_mem_log, fmt, ##args)
+
+#define KGSL_PWR_VDBG(fmt, args...) KGSL_LOG_VDBG(kgsl_pwr_log, fmt, ##args)
+#define KGSL_PWR_DBG(fmt, args...)  KGSL_LOG_DBG(kgsl_pwr_log, fmt, ##args)
+#define KGSL_PWR_INFO(fmt, args...) KGSL_LOG_INFO(kgsl_pwr_log, fmt, ##args)
+#define KGSL_PWR_WARN(fmt, args...) KGSL_LOG_WARN(kgsl_pwr_log, fmt, ##args)
+#define KGSL_PWR_ERR(fmt, args...)  KGSL_LOG_ERR(kgsl_pwr_log, fmt, ##args)
+#define KGSL_PWR_FATAL(fmt, args...) KGSL_LOG_FATAL(kgsl_pwr_log, fmt, ##args)
 
 #endif /* _GSL_LOG_H */
