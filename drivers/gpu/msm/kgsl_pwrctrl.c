@@ -339,7 +339,6 @@ void kgsl_pwrctrl_clk(struct kgsl_device *device, int state)
 		}
 	}
 }
-EXPORT_SYMBOL(kgsl_pwrctrl_clk);
 
 void kgsl_pwrctrl_axi(struct kgsl_device *device, int state)
 {
@@ -376,8 +375,6 @@ void kgsl_pwrctrl_axi(struct kgsl_device *device, int state)
 		}
 	}
 }
-EXPORT_SYMBOL(kgsl_pwrctrl_axi);
-
 
 void kgsl_pwrctrl_pwrrail(struct kgsl_device *device, int state)
 {
@@ -401,7 +398,6 @@ void kgsl_pwrctrl_pwrrail(struct kgsl_device *device, int state)
 		}
 	}
 }
-EXPORT_SYMBOL(kgsl_pwrctrl_pwrrail);
 
 void kgsl_pwrctrl_irq(struct kgsl_device *device, int state)
 {
