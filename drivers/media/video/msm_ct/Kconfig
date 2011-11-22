@@ -1,0 +1,14 @@
+config MSM_CAMERA_SHR_CT
+	bool "SHR CT"
+	depends on ARCH_MSM
+	default n
+	---help---
+	  SHR_CT
+
+config QS_S5K4E1
+	bool "Sensor qs_s5k4e1 (Samsung 5M)"
+	depends on MSM_CAMERA && ARCH_MSM8X60 && !MSM_CAMERA_V4L2
+	default n
+	---help---
+	  Samsung 5M with Autofocus
+

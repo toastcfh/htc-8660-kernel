@@ -1,0 +1,14 @@
+config BT_TIHIDP
+	tristate "TI-HIDP protocol support"
+	depends on BT && INPUT
+	select HID
+	help
+	  TI-HIDP (Human Interface Device Protocol) is a transport layer
+	  for HID reports.  HIDP is required for the Bluetooth Human
+	  Interface Device Profile.
+
+	  This version is specialized for Texas Instruments
+
+	  Say Y here to compile HIDP support into the kernel or say M to
+	  compile it as module (hidp).
+
