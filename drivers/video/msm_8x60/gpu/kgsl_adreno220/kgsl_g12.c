@@ -213,9 +213,10 @@ irqreturn_t kgsl_g12_isr(int irq, void *data)
 		}
 	}
 
-	if (device->pwrctrl.nap_allowed == true) {
+	if ((device->pwrctrl.nap_allowed == true) &&
+		(device->requested_state == KGSL_STATE_NONE)) {
 		device->requested_state = KGSL_STATE_NAP;
-		schedule_work(&device->idle_check_ws);
+		queue_work(device->work_queue, &device->idle_check_ws);
 	}
 	mod_timer(&device->idle_timer,
 			jiffies + device->pwrctrl.interval_timeout);
