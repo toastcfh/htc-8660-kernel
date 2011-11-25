@@ -1,4 +1,4 @@
-/* Copyright (c) 2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2010-2011, Code Aurora Forum. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -50,17 +50,16 @@
 #define KGSL_PWRFLAGS_IRQ_OFF		0x00000080
 
 #define KGSL_DEFAULT_PWRLEVEL 1
+#define KGSL_MAX_CLKS 5
+
+struct platform_device;
 
 struct kgsl_pwrctrl {
 	int interrupt_num;
 	int have_irq;
 	unsigned int pwr_rail;
 	struct clk *ebi1_clk;
-	struct clk *grp_clk;
-	struct clk *grp_pclk;
-	struct clk *grp_src_clk;
-	struct clk *imem_clk;
-	struct clk *imem_pclk;
+	struct clk *grp_clks[KGSL_MAX_CLKS];
 	unsigned int power_flags;
 	struct kgsl_pwrlevel pwrlevels[KGSL_MAX_PWRLEVELS];
 	unsigned int active_pwrlevel;
@@ -70,25 +69,28 @@ struct kgsl_pwrctrl {
 	struct regulator *gpu_reg;
 	uint32_t pcl;
 	unsigned int nap_allowed;
-	unsigned int io_fraction;
-	unsigned int io_count;
 	struct kgsl_yamato_context *suspended_ctxt;
+	const char *regulator_name;
+	const char *irq_name;
+	const char *src_clk_name;
+	bool pwrrail_first;
 	s64 time;
 	unsigned int no_switch_cnt;
 	unsigned int idle_pass;
 };
 
-int kgsl_pwrctrl_clk(struct kgsl_device *device, unsigned int pwrflag);
-int kgsl_pwrctrl_axi(struct kgsl_device *device, unsigned int pwrflag);
-int kgsl_pwrctrl_pwrrail(struct kgsl_device *device, unsigned int pwrflag);
-int kgsl_pwrctrl_irq(struct kgsl_device *device, unsigned int pwrflag);
+void kgsl_pwrctrl_clk(struct kgsl_device *device, unsigned int pwrflag);
+void kgsl_pwrctrl_axi(struct kgsl_device *device, unsigned int pwrflag);
+void kgsl_pwrctrl_pwrrail(struct kgsl_device *device, unsigned int pwrflag);
+void kgsl_pwrctrl_irq(struct kgsl_device *device, unsigned int pwrflag);
+int kgsl_pwrctrl_init(struct kgsl_device *device);
 void kgsl_pwrctrl_close(struct kgsl_device *device);
 void kgsl_timer(unsigned long data);
 void kgsl_idle_check(struct work_struct *work);
 void kgsl_pre_hwaccess(struct kgsl_device *device);
 void kgsl_check_suspended(struct kgsl_device *device);
 int kgsl_pwrctrl_sleep(struct kgsl_device *device);
-int kgsl_pwrctrl_wake(struct kgsl_device *device);
+void kgsl_pwrctrl_wake(struct kgsl_device *device);
 unsigned long  kgsl_get_clkrate(struct clk *clk);
 
 int kgsl_pwrctrl_init_sysfs(struct kgsl_device *device);

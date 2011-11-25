@@ -393,20 +393,19 @@ union reg_cp_rb_cntl {
 #define REG_RBBM_SOFT_RESET              0x003C
 #define REG_RBBM_STATUS                  0x05D0
 
+#define REG_RB_DEPTHCONTROL              0x2200
 #define REG_RB_COLORCONTROL              0x2202
 #define REG_RB_COLOR_DEST_MASK           0x2326
 #define REG_RB_COLOR_MASK                0x2104
 #define REG_RB_COPY_CONTROL              0x2318
-#define REG_RB_DEPTHCONTROL              0x2200
 #define REG_RB_EDRAM_INFO                0x0F02
 #define REG_RB_MODECONTROL               0x2208
 #define REG_RB_SURFACE_INFO              0x2000
-#define REG_RB_SAMPLE_POS		 0x220a
+#define REG_RB_SAMPLE_POS                0x220a
 
 #define REG_SCRATCH_ADDR                 0x01DD
 #define REG_SCRATCH_REG0                 0x0578
 #define REG_SCRATCH_REG2                 0x057A
-#define REG_SCRATCH_REG6                 0x057E
 #define REG_SCRATCH_UMSK                 0x01DC
 
 #define REG_SQ_CF_BOOLEANS               0x4900

@@ -69,6 +69,7 @@
 #define KGSL_STATE_SLEEP	0x00000008
 #define KGSL_STATE_SUSPEND	0x00000010
 #define KGSL_STATE_HUNG		0x00000020
+#define KGSL_STATE_DUMP_AND_RECOVER	0x00000040
 
 #define KGSL_GRAPHICS_MEMORY_LOW_WATERMARK  0x1000000
 
@@ -87,11 +88,11 @@ struct kgsl_functable {
 					unsigned int offsetwords,
 					unsigned int value);
 	void (*device_regread_isr) (struct kgsl_device *device,
-					unsigned int offsetwords,
-					unsigned int *value);
+				    unsigned int offsetwords,
+				    unsigned int *value);
 	void (*device_regwrite_isr) (struct kgsl_device *device,
-					unsigned int offsetwords,
-					unsigned int value);
+				     unsigned int offsetwords,
+				     unsigned int value);
 	int (*device_setstate) (struct kgsl_device *device, uint32_t flags);
 	int (*device_idle) (struct kgsl_device *device, unsigned int timeout);
 	unsigned int (*device_isidle) (struct kgsl_device *device);
@@ -121,8 +122,7 @@ struct kgsl_functable {
 	int (*device_drawctxt_destroy) (struct kgsl_device *device,
 					struct kgsl_context *context);
 	long (*device_ioctl) (struct kgsl_device_private *dev_priv,
-					unsigned int cmd,
-					unsigned long arg);
+					unsigned int cmd, void *data);
 	int (*device_setup_pt)(struct kgsl_device *device,
 			       struct kgsl_pagetable *pagetable);
 
@@ -141,11 +141,14 @@ struct kgsl_memregion {
 struct kgsl_device {
 	struct device *dev;
 	const char *name;
+	unsigned int ver_major;
+	unsigned int ver_minor;
 	uint32_t       flags;
 	enum kgsl_deviceid    id;
 	unsigned int      chip_id;
 	struct kgsl_memregion regspace;
 	struct kgsl_memdesc memstore;
+	const char *iomemname;
 
 	struct kgsl_mmu 	  mmu;
 	struct completion hwaccess_gate;
@@ -153,7 +156,7 @@ struct kgsl_device {
 	struct work_struct idle_check_ws;
 	struct timer_list idle_timer;
 	struct kgsl_pwrctrl pwrctrl;
-	atomic_t open_count;
+	int open_count;
 
 	struct atomic_notifier_head ts_notifier_list;
 	struct mutex mutex;
@@ -164,8 +167,19 @@ struct kgsl_device {
 	unsigned int active_cnt;
 	struct completion suspend_gate;
 
+	wait_queue_head_t wait_queue;
 	struct workqueue_struct *work_queue;
+	struct platform_device *pdev;
+	struct completion recovery_gate;
+	struct dentry *d_debugfs;
 	struct idr context_idr;
+
+	/* Logging levels */
+	int cmd_log;
+	int ctxt_log;
+	int drv_log;
+	int mem_log;
+	int pwr_log;
 	struct wake_lock idle_wakelock;
 };
 
@@ -186,6 +200,15 @@ struct kgsl_process_private {
 	struct list_head mem_list;
 	struct kgsl_pagetable *pagetable;
 	struct list_head list;
+	struct kobject *kobj;
+
+	struct {
+		unsigned int vmalloc;
+		unsigned int vmalloc_max;
+		unsigned int exmem;
+		unsigned int exmem_max;
+		unsigned int flushes;
+	} stats;
 };
 
 struct kgsl_device_private {
@@ -215,11 +238,10 @@ kgsl_get_mmu(struct kgsl_device *device)
 
 static inline int kgsl_create_device_workqueue(struct kgsl_device *device)
 {
-	KGSL_DRV_INFO("creating workqueue: %s\n", device->name);
 	device->work_queue = create_workqueue(device->name);
 	if (!device->work_queue) {
-		KGSL_DRV_ERR("Failed to create workqueue %s\n",
-				device->name);
+		KGSL_DRV_ERR(device, "create_workqueue(%s) failed\n",
+			device->name);
 		return -EINVAL;
 	}
 	return 0;

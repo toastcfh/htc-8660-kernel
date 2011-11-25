@@ -1,4 +1,4 @@
-/* Copyright (c) 2002,2007-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2002,2007-2011, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -43,11 +43,13 @@ kgsl_g12_drawctxt_destroy(struct kgsl_device *device,
 {
 	struct kgsl_g12_device *g12_device = KGSL_G12_DEVICE(device);
 
-	if (g12_device->ringbuffer.prevctx == context->id) {
-		kgsl_g12_idle(device, KGSL_TIMEOUT_DEFAULT);
-		g12_device->ringbuffer.prevctx = KGSL_G12_INVALID_CONTEXT;
-	}
+	kgsl_g12_idle(device, KGSL_TIMEOUT_DEFAULT);
 
+	if (g12_device->ringbuffer.prevctx == context->id) {
+		g12_device->ringbuffer.prevctx = KGSL_G12_INVALID_CONTEXT;
+		device->mmu.hwpagetable = device->mmu.defaultpagetable;
+		kgsl_setstate(device, KGSL_MMUFLAGS_PTUPDATE);
+	}
 
 	return 0;
 }

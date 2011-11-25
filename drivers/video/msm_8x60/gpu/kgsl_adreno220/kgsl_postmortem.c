@@ -20,6 +20,8 @@
 #include <linux/relay.h>
 #include <linux/debugfs.h>
 #include <linux/vmalloc.h>
+#include <linux/debugfs.h>
+
 #include "kgsl.h"
 #include "kgsl_device.h"
 #include "kgsl_cmdstream.h"
@@ -31,7 +33,8 @@
 #include "kgsl_yamato.h"
 
 #define INVALID_RB_CMD 0xaaaaaaaa
-#define KGSL_TEST_VERSION "SBA 42"
+
+static int kgsl_pm_regs_enabled;
 
 struct pm_id_name {
 	uint32_t id;
@@ -72,6 +75,95 @@ static const struct pm_id_name pm3_types[] = {
 	{PM4_SET_PROTECTED_MODE,	"ST_PRT_M"},
 	{PM4_SET_SHADER_BASES,		"ST_SHD_B"},
 	{PM4_WAIT_FOR_IDLE,		"WAIT4IDL"},
+};
+
+/* Offset address pairs: start, end of range to dump (inclusive) */
+
+/* GPU < Z470 */
+
+static const int yamato_registers[] = {
+	0x0000, 0x0008, 0x0010, 0x002c, 0x00ec, 0x00f4,
+	0x0100, 0x0110, 0x0118, 0x011c,
+	0x0700, 0x0704, 0x070c, 0x0720, 0x0754, 0x0764,
+	0x0770, 0x0774, 0x07a8, 0x07a8, 0x07b8, 0x07cc,
+	0x07d8, 0x07dc, 0x07f0, 0x07fc, 0x0e44, 0x0e48,
+	0x0e6c, 0x0e78, 0x0ec8, 0x0ed4, 0x0edc, 0x0edc,
+	0x0fe0, 0x0fec, 0x1100, 0x1100,
+
+	0x110c, 0x1110, 0x112c, 0x112c, 0x1134, 0x113c,
+	0x1148, 0x1148, 0x1150, 0x116c, 0x11fc, 0x11fc,
+	0x15e0, 0x161c, 0x1724, 0x1724, 0x1740, 0x1740,
+	0x1804, 0x1810, 0x1818, 0x1824, 0x182c, 0x1838,
+	0x184c, 0x1850, 0x28a4, 0x28ac, 0x28bc, 0x28c4,
+	0x2900, 0x290c, 0x2914, 0x2914, 0x2938, 0x293c,
+	0x30b0, 0x30b0, 0x30c0, 0x30c0, 0x30e0, 0x30f0,
+	0x3100, 0x3100, 0x3110, 0x3110, 0x3200, 0x3218,
+	0x3220, 0x3250, 0x3264, 0x3268, 0x3290, 0x3294,
+	0x3400, 0x340c, 0x3418, 0x3418, 0x3420, 0x342c,
+	0x34d0, 0x34d4, 0x36b8, 0x3704, 0x3720, 0x3750,
+	0x3760, 0x3764, 0x3800, 0x3800, 0x3808, 0x3810,
+	0x385c, 0x3878, 0x3b00, 0x3b24, 0x3b2c, 0x3b30,
+	0x3b40, 0x3b40, 0x3b50, 0x3b5c, 0x3b80, 0x3b88,
+	0x3c04, 0x3c08, 0x3c30, 0x3c30, 0x3c38, 0x3c48,
+	0x3c98, 0x3ca8, 0x3cb0, 0x3cb0,
+
+	0x8000, 0x8008, 0x8018, 0x803c, 0x8200, 0x8208,
+	0x8400, 0x8424, 0x8430, 0x8450, 0x8600, 0x8610,
+	0x87d4, 0x87dc, 0x8800, 0x8820, 0x8a00, 0x8a0c,
+	0x8a4c, 0x8a50, 0x8c00, 0x8c20, 0x8c48, 0x8c48,
+	0x8c58, 0x8c74, 0x8c90, 0x8c98, 0x8e00, 0x8e0c,
+
+	0x9000, 0x9008, 0x9018, 0x903c, 0x9200, 0x9208,
+	0x9400, 0x9424, 0x9430, 0x9450, 0x9600, 0x9610,
+	0x97d4, 0x97dc, 0x9800, 0x9820, 0x9a00, 0x9a0c,
+	0x9a4c, 0x9a50, 0x9c00, 0x9c20, 0x9c48, 0x9c48,
+	0x9c58, 0x9c74, 0x9c90, 0x9c98, 0x9e00, 0x9e0c,
+
+	0x10000, 0x1000c, 0x12000, 0x12014,
+	0x12400, 0x12400, 0x12420, 0x12420
+};
+
+/* GPU = Z470 */
+
+static const int leia_registers[] = {
+	0x0000, 0x0008, 0x0010, 0x002c, 0x00ec, 0x00f4,
+	0x0100, 0x0110, 0x0118, 0x011c,
+	0x0700, 0x0704, 0x070c, 0x0720, 0x0754, 0x0764,
+	0x0770, 0x0774, 0x07a8, 0x07a8, 0x07b8, 0x07cc,
+	0x07d8, 0x07dc, 0x07f0, 0x07fc, 0x0e44, 0x0e48,
+	0x0e6c, 0x0e78, 0x0ec8, 0x0ed4, 0x0edc, 0x0edc,
+	0x0fe0, 0x0fec, 0x1100, 0x1100,
+
+	0x110c, 0x1110, 0x112c, 0x112c, 0x1134, 0x113c,
+	0x1148, 0x1148, 0x1150, 0x116c, 0x11fc, 0x11fc,
+	0x15e0, 0x161c, 0x1724, 0x1724, 0x1740, 0x1740,
+	0x1804, 0x1810, 0x1818, 0x1824, 0x182c, 0x1838,
+	0x184c, 0x1850, 0x28a4, 0x28ac, 0x28bc, 0x28c4,
+	0x2900, 0x2900, 0x2908, 0x290c, 0x2914, 0x2914,
+	0x2938, 0x293c, 0x30c0, 0x30c0, 0x30e0, 0x30e4,
+	0x30f0, 0x30f0, 0x3200, 0x3204, 0x3220, 0x324c,
+	0x3400, 0x340c, 0x3414, 0x3418, 0x3420, 0x342c,
+	0x34d0, 0x34d4, 0x36b8, 0x3704, 0x3720, 0x3750,
+	0x3760, 0x3764, 0x3800, 0x3800, 0x3808, 0x3810,
+	0x385c, 0x3878, 0x3b00, 0x3b24, 0x3b2c, 0x3b30,
+	0x3b40, 0x3b40, 0x3b50, 0x3b5c, 0x3b80, 0x3b88,
+	0x3c04, 0x3c08, 0x8000, 0x8008, 0x8018, 0x803c,
+	0x8200, 0x8208, 0x8400, 0x8408, 0x8410, 0x8424,
+	0x8430, 0x8450, 0x8600, 0x8610, 0x87d4, 0x87dc,
+	0x8800, 0x8808, 0x8810, 0x8810, 0x8820, 0x8820,
+	0x8a00, 0x8a08, 0x8a50, 0x8a50,
+	0x8c00, 0x8c20, 0x8c24, 0x8c28, 0x8c48, 0x8c48,
+	0x8c58, 0x8c58, 0x8c60, 0x8c74, 0x8c90, 0x8c98,
+	0x8e00, 0x8e0c, 0x9000, 0x9008, 0x9018, 0x903c,
+	0x9200, 0x9208, 0x9400, 0x9408, 0x9410, 0x9424,
+	0x9430, 0x9450, 0x9600, 0x9610, 0x97d4, 0x97dc,
+	0x9800, 0x9808, 0x9810, 0x9818, 0x9820, 0x9820,
+	0x9a00, 0x9a08, 0x9a50, 0x9a50, 0x9c00, 0x9c20,
+	0x9c48, 0x9c48, 0x9c58, 0x9c58, 0x9c60, 0x9c74,
+	0x9c90, 0x9c98, 0x9e00, 0x9e0c,
+
+	0x10000, 0x1000c, 0x12000, 0x12014,
+	0x12400, 0x12400, 0x12420, 0x12420
 };
 
 static uint32_t kgsl_is_pm4_len(uint32_t word)
@@ -155,7 +247,7 @@ static void kgsl_dump_regs(struct kgsl_device *device,
 
 			hex_dump_to_buffer(regvals, linelen*4, 32, 4,
 				linebuf, sizeof(linebuf), 0);
-			KGSL_LOG_DUMP("%s: %5.5X: %s\n", label,
+			KGSL_LOG_DUMP(device,"%s: %5.5X: %s\n", label,
 				      offset<<2, linebuf);
 		}
 	}
@@ -227,65 +319,18 @@ static void kgsl_yamato_dump_regs(struct kgsl_device *device)
 #endif
 }
 
-static struct kgsl_process_private*  get_current_process(uint32_t pt_base)
-{
-	struct kgsl_pagetable *pt = NULL;
-	struct kgsl_pagetable *current_pt = NULL;
-	struct kgsl_process_private *private = NULL;
-	struct kgsl_process_private *current_private = NULL;
-
-
-	list_for_each_entry(pt, &kgsl_driver.pagetable_list, list) {
-		if (pt->base.gpuaddr == pt_base) {
-			current_pt = pt;
-			break;
-		}
-        }
-
-	if(current_pt == NULL)
-		goto done;
-
-	list_for_each_entry(private, &kgsl_driver.process_list, list) {
-		if (private->pagetable == current_pt) {
-			current_private = private;
-			break;
-		}
-	}
-done:
-	return current_private;
-}
-
 static void dump_ib(struct kgsl_device *device, char* buffId, uint32_t pt_base,
 	uint32_t base_offset, uint32_t ib_base, uint32_t ib_size, bool dump)
 {
 	unsigned int memsize;
-	struct kgsl_mem_entry *entry;
-	struct kgsl_memdesc *memdesc;
-	struct kgsl_process_private *process_priv = NULL;
 	uint8_t *base_addr = kgsl_sharedmem_convertaddr(device, pt_base,
 		ib_base, &memsize);
-
-	process_priv = get_current_process(pt_base);
-
-	if (process_priv) {
-		spin_lock(&process_priv->mem_lock);
-		entry = kgsl_sharedmem_find_region(process_priv,
-					ib_base, ib_size * sizeof(uint));
-		spin_unlock(&process_priv->mem_lock);
-
-		if (entry != NULL) {
-			memdesc = &entry->memdesc;
-			kgsl_cache_range_op((unsigned long)memdesc->physaddr,
-					memdesc->size, KGSL_MEMFLAGS_CACHE_INV |
-					KGSL_MEMFLAGS_VMALLOC_MEM);
-		}
-	}
 
 	if (base_addr && dump)
 		print_hex_dump(KERN_ERR, buffId, DUMP_PREFIX_OFFSET,
 				 32, 4, base_addr, ib_size*4, 0);
 	else
-		KGSL_LOG_DUMP("%s base:%8.8X  ib_size:%d  "
+		KGSL_LOG_DUMP(device, "%s base:%8.8X  ib_size:%d  "
 			"offset:%5.5X%s\n",
 			buffId, ib_base, ib_size*4, base_offset,
 			base_addr ? "" : " [Invalid]");
@@ -388,7 +433,8 @@ static bool kgsl_rb_use_hex(void)
 #endif
 }
 
-static void kgsl_dump_rb(const void *buf, size_t len, int start, int size)
+static void kgsl_dump_rb(struct kgsl_device *device, const void *buf,
+			 size_t len, int start, int size)
 {
 	const uint32_t *ptr = buf;
 	int i, remaining, args = 0;
@@ -407,7 +453,8 @@ static void kgsl_dump_rb(const void *buf, size_t len, int start, int size)
 		else
 			kgsl_dump_rb_buffer(ptr+i, linelen, linebuf,
 				sizeof(linebuf), &args);
-		KGSL_LOG_DUMP("RB: %4.4X:%s\n", (start+i)%size, linebuf);
+		KGSL_LOG_DUMP(device,
+			"RB: %4.4X:%s\n", (start+i)%size, linebuf);
 	}
 }
 
@@ -424,7 +471,8 @@ struct log_field {
 	bool show;
 	const char *display;
 };
-static int kgsl_dump_fields_line(
+
+static int kgsl_dump_fields_line(struct kgsl_device *device,
 				 const char *start, char *str, int slen,
 				 const struct log_field **lines,
 				 int num)
@@ -449,21 +497,23 @@ static int kgsl_dump_fields_line(
 		sptr += snprintf(str + sptr, slen - sptr, "%s", l->display);
 	}
 
-	KGSL_LOG_DUMP("%s\n", str);
+	KGSL_LOG_DUMP(device, "%s\n", str);
 
 	*lines = l;
 	return num;
 }
 
-static void kgsl_dump_fields(const char *start, const struct log_field *lines,
-	int num)
+static void kgsl_dump_fields(struct kgsl_device *device,
+			     const char *start, const struct log_field *lines,
+			     int num)
 {
 	char lb[90];
 	const char *sstr = start;
+
 	lb[sizeof(lb)  - 1] = '\0';
 
 	while (num) {
-		int ret = kgsl_dump_fields_line(sstr, lb,
+		int ret = kgsl_dump_fields_line(device, sstr, lb,
 			sizeof(lb) - 1, &lines, num);
 
 		if (ret == num)
@@ -472,7 +522,6 @@ static void kgsl_dump_fields(const char *start, const struct log_field *lines,
 		num = ret;
 		sstr = "        ";
 	}
-
 }
 
 static void kgsl_read_debug_regs(struct kgsl_device *device,
@@ -505,31 +554,31 @@ static void kgsl_leia_dump_debug(struct kgsl_device *device)
 			     REG_LEIA_PC_DEBUG_DATA, 8,
 			     str, sizeof(str));
 
-	KGSL_LOG_DUMP("PC_DEBUG: %s\n", str);
+	KGSL_LOG_DUMP(device,  "PC_DEBUG: %s\n", str);
 
 	kgsl_read_debug_regs(device, REG_LEIA_RB_DEBUG_CNTL,
 			     REG_LEIA_RB_DEBUG_DATA, 7,
 			     str, sizeof(str));
 
-	KGSL_LOG_DUMP("RB0_DEBUG: %s\n", str);
+	KGSL_LOG_DUMP(device, "RB0_DEBUG: %s\n", str);
 
 	kgsl_read_debug_regs(device, REG_LEIA_RB_DEBUG_CNTL,
 			     REG_LEIA_RB1_DEBUG_DATA, 7,
 			     str, sizeof(str));
 
-	KGSL_LOG_DUMP("RB1_DEBUG: %s\n", str);
+	KGSL_LOG_DUMP(device, "RB1_DEBUG: %s\n", str);
 
 	kgsl_read_debug_regs(device, REG_LEIA_GRAS_DEBUG_CNTL,
 			     REG_LEIA_GRAS_DEBUG_DATA, 4,
 			     str, sizeof(str));
 
-	KGSL_LOG_DUMP("GRAS_DEBUG: %s\n", str);
+	KGSL_LOG_DUMP(device, "GRAS_DEBUG: %s\n", str);
 
 	kgsl_read_debug_regs(device, REG_LEIA_SQ_DEBUG_TB_STATUS_SEL,
 			     REG_LEIA_SQ_DEBUG_VTX_TB_STATUS_REG, 8,
 			     str, sizeof(str));
 
-	KGSL_LOG_DUMP("SQ_DEBUG: %s\n", str);
+	KGSL_LOG_DUMP(device, "SQ_DEBUG: %s\n", str);
 
 	/* Read 8 registers for 8 threads */
 
@@ -550,7 +599,7 @@ static void kgsl_leia_dump_debug(struct kgsl_device *device)
 					"%08X ", r1);
 		}
 
-		KGSL_LOG_DUMP("   %d: %s\n", thread, str);
+		KGSL_LOG_DUMP(device, "   %d: %s\n", thread, str);
 	}
 }
 
@@ -569,38 +618,38 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	int num_item = 0;
 	int read_idx, write_idx;
 	unsigned int ts_processed, rb_memsize;
-	unsigned int vsc_control;
 
 	static struct ib_list ib_list;
 
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
-	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
-	KGSL_LOG_DUMP("KGSL VERSION %s \n", KGSL_TEST_VERSION);
+	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 
 	mb();
 
-	KGSL_LOG_DUMP("POWER: FLAGS = %08X | ACTIVE POWERLEVEL = %08X",
+	KGSL_LOG_DUMP(device, "POWER: FLAGS = %08X | ACTIVE POWERLEVEL = %08X",
 			pwr->power_flags, pwr->active_pwrlevel);
 
-	KGSL_LOG_DUMP("POWER: INTERVAL TIMEOUT = %08X ",
+	KGSL_LOG_DUMP(device, "POWER: INTERVAL TIMEOUT = %08X ",
 		pwr->interval_timeout);
 
-	KGSL_LOG_DUMP("GRP_CLK = %lu ", kgsl_get_clkrate(pwr->grp_clk));
+	KGSL_LOG_DUMP(device, "GRP_CLK = %lu ",
+				  kgsl_get_clkrate(pwr->grp_clks[0]));
 
-	KGSL_LOG_DUMP("BUS CLK = %lu ",
+	KGSL_LOG_DUMP(device, "BUS CLK = %lu ",
 		kgsl_get_clkrate(pwr->ebi1_clk));
+
 
 	kgsl_regread(device, REG_RBBM_STATUS, &rbbm_status);
 	kgsl_regread(device, REG_RBBM_PM_OVERRIDE1, &r2);
 	kgsl_regread(device, REG_RBBM_PM_OVERRIDE2, &r3);
-	KGSL_LOG_DUMP("RBBM:   STATUS   = %08X | PM_OVERRIDE1 = %08X | "
+	KGSL_LOG_DUMP(device, "RBBM:   STATUS   = %08X | PM_OVERRIDE1 = %08X | "
 		"PM_OVERRIDE2 = %08X\n", rbbm_status, r2, r3);
 
 	kgsl_regread(device, REG_RBBM_INT_CNTL, &r1);
 	kgsl_regread(device, REG_RBBM_INT_STATUS, &r2);
 	kgsl_regread(device, REG_RBBM_READ_ERROR, &r3);
-	KGSL_LOG_DUMP("        INT_CNTL = %08X | INT_STATUS   = %08X | "
+	KGSL_LOG_DUMP(device, "        INT_CNTL = %08X | INT_STATUS   = %08X | "
 		"READ_ERROR   = %08X\n", r1, r2, r3);
 
 	{
@@ -629,47 +678,49 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 		};
 		snprintf(cmdFifo, sizeof(cmdFifo), "CMD FIFO=%01X  ",
 			rbbm_status & 0xf);
-		kgsl_dump_fields(" STATUS=", lines, ARRAY_SIZE(lines));
+		kgsl_dump_fields(device, " STATUS=", lines, ARRAY_SIZE(lines));
 	}
 
 	kgsl_regread(device, REG_CP_RB_BASE, &cp_rb_base);
 	kgsl_regread(device, REG_CP_RB_CNTL, &r2);
 	rb_count = 2 << (r2 & (BIT(6)-1));
 	kgsl_regread(device, REG_CP_RB_RPTR_ADDR, &r3);
-	KGSL_LOG_DUMP("CP_RB:  BASE = %08X | CNTL   = %08X | RPTR_ADDR = %08X"
-		" | rb_count = %d\n", cp_rb_base, r2, r3, rb_count);
-	if (rb_count != 8192) {
-		rb_count = 8192;
-	}
+	KGSL_LOG_DUMP(device,
+		"CP_RB:  BASE = %08X | CNTL   = %08X | RPTR_ADDR = %08X"
+		"\n", cp_rb_base, r2, r3);
 
 	kgsl_regread(device, REG_CP_RB_RPTR, &cp_rb_rptr);
 	kgsl_regread(device, REG_CP_RB_WPTR, &cp_rb_wptr);
 	kgsl_regread(device, REG_CP_RB_RPTR_WR, &r3);
-	KGSL_LOG_DUMP("        RPTR = %08X | WPTR   = %08X | RPTR_WR   = %08X"
+	KGSL_LOG_DUMP(device,
+		"        RPTR = %08X | WPTR   = %08X | RPTR_WR   = %08X"
 		"\n", cp_rb_rptr, cp_rb_wptr, r3);
 
 	kgsl_regread(device, REG_CP_IB1_BASE, &cp_ib1_base);
 	kgsl_regread(device, REG_CP_IB1_BUFSZ, &cp_ib1_bufsz);
-	KGSL_LOG_DUMP("CP_IB1: BASE = %08X | BUFSZ  = %d\n", cp_ib1_base,
+	KGSL_LOG_DUMP(device,
+		"CP_IB1: BASE = %08X | BUFSZ  = %d\n", cp_ib1_base,
 		cp_ib1_bufsz);
 
 	kgsl_regread(device, REG_CP_IB2_BASE, &cp_ib2_base);
 	kgsl_regread(device, REG_CP_IB2_BUFSZ, &cp_ib2_bufsz);
-	KGSL_LOG_DUMP("CP_IB2: BASE = %08X | BUFSZ  = %d\n", cp_ib2_base,
+	KGSL_LOG_DUMP(device,
+		"CP_IB2: BASE = %08X | BUFSZ  = %d\n", cp_ib2_base,
 		cp_ib2_bufsz);
 
 	kgsl_regread(device, REG_CP_INT_CNTL, &r1);
 	kgsl_regread(device, REG_CP_INT_STATUS, &r2);
-	KGSL_LOG_DUMP("CP_INT: CNTL = %08X | STATUS = %08X\n", r1, r2);
+	KGSL_LOG_DUMP(device, "CP_INT: CNTL = %08X | STATUS = %08X\n", r1, r2);
 
 	kgsl_regread(device, REG_CP_ME_CNTL, &r1);
 	kgsl_regread(device, REG_CP_ME_STATUS, &r2);
 	kgsl_regread(device, REG_MASTER_INT_SIGNAL, &r3);
-	KGSL_LOG_DUMP("CP_ME:  CNTL = %08X | STATUS = %08X | MSTR_INT_SGNL = "
+	KGSL_LOG_DUMP(device,
+		"CP_ME:  CNTL = %08X | STATUS = %08X | MSTR_INT_SGNL = "
 		"%08X\n", r1, r2, r3);
 
 	kgsl_regread(device, REG_CP_STAT, &cp_stat);
-	KGSL_LOG_DUMP("CP_STAT      = %08X\n", cp_stat);
+	KGSL_LOG_DUMP(device, "CP_STAT      = %08X\n", cp_stat);
 #ifndef CONFIG_MSM_KGSL_PSTMRTMDMP_CP_STAT_NO_DETAIL
 	{
 		struct log_field lns[] = {
@@ -677,7 +728,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat &  BIT(1), "RD_RQ_BSY  1"},
 			{cp_stat &  BIT(2), "RD_RTN_BSY 2"},
 		};
-		kgsl_dump_fields("    MIU=", lns, ARRAY_SIZE(lns));
+		kgsl_dump_fields(device, "    MIU=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -687,7 +738,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat &  BIT(9), "ST_BUSY    9"},
 			{cp_stat & BIT(10), "BUSY      10"},
 		};
-		kgsl_dump_fields("    CSF=", lns, ARRAY_SIZE(lns));
+		kgsl_dump_fields(device, "    CSF=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -697,7 +748,7 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat & BIT(16), "ST_QUEUE_B16"},
 			{cp_stat & BIT(17), "PFP_BUSY  17"},
 		};
-		kgsl_dump_fields("   RING=", lns, ARRAY_SIZE(lns));
+		kgsl_dump_fields(device, "   RING=", lns, ARRAY_SIZE(lns));
 	}
 	{
 		struct log_field lns[] = {
@@ -714,81 +765,88 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			{cp_stat & BIT(30), "MIU_FF EM 30"},
 			{cp_stat & BIT(31), "CP_BUSY   31"},
 		};
-		kgsl_dump_fields(" CP_STT=", lns, ARRAY_SIZE(lns));
+		kgsl_dump_fields(device, " CP_STT=", lns, ARRAY_SIZE(lns));
 	}
-	kgsl_regread(device, RB_LRZ_VSC_CONTROL, &vsc_control);
-	KGSL_LOG_DUMP("RB_LRZ_VSC_CONTROL = %08X\n", vsc_control);
 #endif
 
 	kgsl_regread(device, REG_SCRATCH_REG0, &r1);
-	KGSL_LOG_DUMP("SCRATCH_REG0       = %08X\n", r1);
-	kgsl_regread(device, REG_SCRATCH_REG6, &r1);
-	KGSL_LOG_DUMP("SCRATCH_REG6       = %08X\n", r1);
+	KGSL_LOG_DUMP(device, "SCRATCH_REG0       = %08X\n", r1);
 
 	kgsl_regread(device, REG_COHER_SIZE_PM4, &r1);
 	kgsl_regread(device, REG_COHER_BASE_PM4, &r2);
 	kgsl_regread(device, REG_COHER_STATUS_PM4, &r3);
-	KGSL_LOG_DUMP("COHER:  SIZE_PM4   = %08X | BASE_PM4 = %08X | STATUS_PM4"
+	KGSL_LOG_DUMP(device,
+		"COHER:  SIZE_PM4   = %08X | BASE_PM4 = %08X | STATUS_PM4"
 		" = %08X\n", r1, r2, r3);
 
 	kgsl_regread(device, REG_MH_AXI_ERROR, &r1);
-	KGSL_LOG_DUMP("MH:     AXI_ERROR  = %08X\n", r1);
+	KGSL_LOG_DUMP(device, "MH:     AXI_ERROR  = %08X\n", r1);
 
 	kgsl_regread(device, REG_MH_MMU_PAGE_FAULT, &r1);
 	kgsl_regread(device, REG_MH_MMU_CONFIG, &r2);
 	kgsl_regread(device, REG_MH_MMU_MPU_BASE, &r3);
-	KGSL_LOG_DUMP("MH_MMU: PAGE_FAULT = %08X | CONFIG   = %08X | MPU_BASE ="
+	KGSL_LOG_DUMP(device,
+		"MH_MMU: PAGE_FAULT = %08X | CONFIG   = %08X | MPU_BASE ="
 		" %08X\n", r1, r2, r3);
 
 	kgsl_regread(device, REG_MH_MMU_MPU_END, &r1);
 	kgsl_regread(device, REG_MH_MMU_VA_RANGE, &r2);
 	kgsl_regread(device, REG_MH_MMU_PT_BASE, &pt_base);
-	KGSL_LOG_DUMP("        MPU_END    = %08X | VA_RANGE = %08X | PT_BASE  ="
+	KGSL_LOG_DUMP(device,
+		"        MPU_END    = %08X | VA_RANGE = %08X | PT_BASE  ="
 		" %08X\n", r1, r2, pt_base);
 
+	KGSL_LOG_DUMP(device, "PAGETABLE SIZE: %08X ", KGSL_PAGETABLE_SIZE);
+
 	kgsl_regread(device, REG_MH_MMU_TRAN_ERROR, &r1);
-	KGSL_LOG_DUMP("        TRAN_ERROR = %08X\n", r1);
+	KGSL_LOG_DUMP(device, "        TRAN_ERROR = %08X\n", r1);
 
 	kgsl_regread(device, REG_MH_INTERRUPT_MASK, &r1);
 	kgsl_regread(device, REG_MH_INTERRUPT_STATUS, &r2);
-	KGSL_LOG_DUMP("MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
+	KGSL_LOG_DUMP(device,
+		"MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
+
+	kgsl_regread(device, REG_RB_DEPTHCONTROL, &r1);
+	KGSL_LOG_DUMP(device, "RB_DEPTHCONTROL: %08X \n", r1);
 
 	kgsl_leia_dump_debug(device);
 
 	if (device->ftbl.device_cmdstream_readtimestamp != NULL) {
 		ts_processed = device->ftbl.device_cmdstream_readtimestamp(
 				device, KGSL_TIMESTAMP_RETIRED);
-		KGSL_LOG_DUMP("TIMESTM RTRD: %08X\n", ts_processed);
+		KGSL_LOG_DUMP(device, "TIMESTM RTRD: %08X\n", ts_processed);
 	}
 
 	num_item = kgsl_ringbuffer_count(&yamato_device->ringbuffer,
 						cp_rb_rptr);
 	if (num_item <= 0)
-		KGSL_LOG_POSTMORTEM_WRITE("Ringbuffer is Empty.\n");
+		KGSL_LOG_POSTMORTEM_WRITE(device, "Ringbuffer is Empty.\n");
 
 	rb_copy = vmalloc(rb_count<<2);
 	if (!rb_copy) {
-		KGSL_LOG_POSTMORTEM_WRITE("Failed to allocate buffer.\n");
+		KGSL_LOG_POSTMORTEM_WRITE(device,
+			"vmalloc(%d) failed\n", rb_count << 2);
 		result = -ENOMEM;
 		goto end;
 	}
 
-	KGSL_LOG_DUMP("RB: rd_addr:%8.8x  rb_size:%d  num_item:%d\n",
+	KGSL_LOG_DUMP(device, "RB: rd_addr:%8.8x  rb_size:%d  num_item:%d\n",
 		cp_rb_base, rb_count<<2, num_item);
 	rb_vaddr = (const uint32_t *)kgsl_sharedmem_convertaddr(device, pt_base,
 					cp_rb_base, &rb_memsize);
 	if (!rb_vaddr) {
-		KGSL_LOG_POSTMORTEM_WRITE("Can't fetch vaddr for CP_RB_BASE\n");
+		KGSL_LOG_POSTMORTEM_WRITE(device,
+			"Can't fetch vaddr for CP_RB_BASE\n");
 		goto error_vfree;
 	}
 
-	read_idx = (int)cp_rb_rptr - 100;
+	read_idx = (int)cp_rb_rptr - 64;
 	if (read_idx < 0)
 		read_idx += rb_count;
 	write_idx = (int)cp_rb_wptr + 16;
 	if (write_idx > rb_count)
 		write_idx -= rb_count;
-	num_item += 100+16;
+	num_item += 64+16;
 	if (num_item > rb_count)
 		num_item = rb_count;
 	if (write_idx >= read_idx)
@@ -817,22 +875,24 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 		}
 	}
 
-	read_idx = (int)cp_rb_rptr - 100;
+	read_idx = (int)cp_rb_rptr - 64;
 	if (read_idx < 0)
 		read_idx += rb_count;
-	KGSL_LOG_DUMP("RB: addr=%8.8x  window:%4.4x-%4.4x, start:%4.4x\n",
+	KGSL_LOG_DUMP(device,
+		"RB: addr=%8.8x  window:%4.4x-%4.4x, start:%4.4x\n",
 		cp_rb_base, cp_rb_rptr, cp_rb_wptr, read_idx);
-	kgsl_dump_rb(rb_copy, num_item<<2, read_idx, rb_count);
+	kgsl_dump_rb(device, rb_copy, num_item<<2, read_idx, rb_count);
 
 	if (kgsl_ib_dump_enabled()) {
-		for (read_idx = 100; read_idx >= 0; --read_idx) {
+		for (read_idx = 64; read_idx >= 0; --read_idx) {
 			uint32_t this_cmd = rb_copy[read_idx];
 			if (this_cmd == pm4_type3_packet(
 				PM4_INDIRECT_BUFFER_PFD, 2)) {
 				uint32_t ib_addr = rb_copy[read_idx+1];
 				uint32_t ib_size = rb_copy[read_idx+2];
-				if (ib_size && cp_ib1_base == ib_addr) {
-					KGSL_LOG_DUMP("IB1: base:%8.8X  "
+				if (cp_ib1_bufsz && cp_ib1_base == ib_addr) {
+					KGSL_LOG_DUMP(device,
+						"IB1: base:%8.8X  "
 						"count:%d\n", ib_addr, ib_size);
 					dump_ib(device, "IB1: ", pt_base,
 						read_idx<<2, ib_addr, ib_size,
@@ -844,7 +904,8 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 			if (cp_ib2_bufsz && cp_ib2_base == ib_list.bases[i]) {
 				uint32_t ib_size = ib_list.sizes[i];
 				uint32_t ib_offset = ib_list.offsets[i];
-				KGSL_LOG_DUMP("IB2: base:%8.8X  count:%d\n",
+				KGSL_LOG_DUMP(device,
+					"IB2: base:%8.8X  count:%d\n",
 					cp_ib2_base, ib_size);
 				dump_ib(device, "IB2: ", pt_base, ib_offset,
 					ib_list.bases[i], ib_size, 1);
@@ -861,35 +922,141 @@ end:
 	return result;
 }
 
-int kgsl_postmortem_dump(struct kgsl_device *device)
+/**
+ * kgsl_postmortem_dump - Dump the current GPU state
+ * @device - A pointer to the KGSL device to dump
+ * @manual - A flag that indicates if this was a manually triggered
+ *           dump (from debugfs).  If zero, then this is assumed to be a
+ *           dump automaticlaly triggered from a hang
+*/
+
+int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 {
-	/* If device state is already hung that means we already dumped
-	 * this hang or are in the process of dumping it */
-	if (device->state & KGSL_STATE_HUNG)
-		return 0;
+	bool saved_nap;
 
 	BUG_ON(device == NULL);
 
 	if (device->id == KGSL_DEVICE_YAMATO) {
-		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
+
+		/* For a manual dump, make sure that the system is idle */
+
+		if (manual) {
+			if (device->active_cnt != 0) {
+				mutex_unlock(&device->mutex);
+				wait_for_completion(&device->suspend_gate);
+				mutex_lock(&device->mutex);
+			}
+
+			if (device->state == KGSL_STATE_ACTIVE)
+				kgsl_idle(device,  KGSL_TIMEOUT_DEFAULT);
+
+		}
+		/* Disable the idle timer so we don't get interrupted */
 		del_timer(&device->idle_timer);
-		device->state = KGSL_STATE_HUNG;
-		KGSL_DRV_ERR("wait for work in workqueue to complete\n");
+
+		/* Turn off napping to make sure we have the clocks full
+		   attention through the following process */
+		saved_nap = device->pwrctrl.nap_allowed;
+		device->pwrctrl.nap_allowed = false;
+
+		/* Force on the clocks */
+		kgsl_pwrctrl_wake(device);
+
+		/* Disable the irq */
+		kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_OFF);
+
+		/* If this is not a manual trigger, then set up the
+		   state to try to recover */
+
+		if (!manual) {
+			device->state = KGSL_STATE_DUMP_AND_RECOVER;
+			KGSL_PWR_WARN(device,
+				"state -> DUMP_AND_RECOVER, device %d\n",
+				device->id);
+		}
+
+		KGSL_DRV_ERR(device,
+			"wait for work in workqueue to complete\n");
 		mutex_unlock(&device->mutex);
 		flush_workqueue(device->work_queue);
 		mutex_lock(&device->mutex);
 		kgsl_dump_yamato(device);
+
+		/* Restore nap mode */
+		device->pwrctrl.nap_allowed = saved_nap;
+
+		/* On a manual trigger, turn on the interrupts and put
+		   the clocks to sleep.  They will recover themselves
+		   on the next event.  For a hang, leave things as they
+		   are until recovery kicks in. */
+
+		if (manual) {
+			kgsl_pwrctrl_irq(device, KGSL_PWRFLAGS_IRQ_ON);
+
+			/* try to go into a sleep mode until the next event */
+			device->requested_state = KGSL_STATE_SLEEP;
+			kgsl_pwrctrl_sleep(device);
+		}
 	}
 	else
-		KGSL_DRV_FATAL("Unknown device id - 0x%x\n", device->id);
+		KGSL_DRV_CRIT(device, "Unknown device id - 0x%x\n", device->id);
 
-	KGSL_DRV_FATAL("Dump Finished\n");
+	KGSL_DRV_ERR(device, "Dump Finished\n");
 
-	//sleep for keep log
 	hr_msleep(5000);
 
-	/* aleays bug on */
 	BUG_ON(true);
 
 	return 0;
+}
+
+static struct dentry *pm_d_debugfs;
+
+static int pm_dump_set(void *data, u64 val)
+{
+	struct kgsl_device *device = data;
+
+	if (val) {
+		mutex_lock(&device->mutex);
+		kgsl_postmortem_dump(device, 1);
+		mutex_unlock(&device->mutex);
+	}
+
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(pm_dump_fops,
+			NULL,
+			pm_dump_set, "%llu\n");
+
+static int pm_regs_enabled_set(void *data, u64 val)
+{
+	kgsl_pm_regs_enabled = val ? 1 : 0;
+	return 0;
+}
+
+static int pm_regs_enabled_get(void *data, u64 *val)
+{
+	*val = kgsl_pm_regs_enabled;
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(pm_regs_enabled_fops,
+			pm_regs_enabled_get,
+			pm_regs_enabled_set, "%llu\n");
+
+void kgsl_postmortem_init(struct kgsl_device *device)
+{
+	if (!device->d_debugfs || IS_ERR(device->d_debugfs))
+		return;
+
+	pm_d_debugfs = debugfs_create_dir("postmortem", device->d_debugfs);
+
+	if (IS_ERR(pm_d_debugfs))
+		return;
+
+	debugfs_create_file("dump",  0600, pm_d_debugfs, device,
+			    &pm_dump_fops);
+	debugfs_create_file("regs_enabled", 0644, pm_d_debugfs, device,
+			    &pm_regs_enabled_fops);
 }

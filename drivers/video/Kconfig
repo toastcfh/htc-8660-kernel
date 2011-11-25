@@ -2222,6 +2222,21 @@ config FB_BROADSHEET
 	  and could also have been called by other names when coupled with
 	  a bridge adapter.
 
+config MSM_KGSL_PAGE_TABLE_SIZE
+	hex "Size of pagetables"
+	default 0xFFF0000
+	depends on MSM_KGSL_MMU
+	---help---
+	  Sets the pagetable size used by the MMU.  The max value
+	  is 0xFFF0000 or (256M - 64K).
+
+config MSM_KGSL_PAGE_TABLE_COUNT
+	int "Number of concurrent pagetables to support"
+	default 8
+	depends on KGSL_PER_PROCESS_PAGE_TABLE
+	---help---
+	  Specify the number of pagetables to allocate at init time
+
 if ARCH_MSM8X60
 	source "drivers/video/msm_8x60/Kconfig"
 endif
