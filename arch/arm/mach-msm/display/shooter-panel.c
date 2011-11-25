@@ -251,8 +251,8 @@ static struct msm_bus_vectors mdp_sd_smi_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_SMI,
-		.ab = 147460000,
-		.ib = 184325000,
+		.ab = 175110000,
+		.ib = 218887500,
 	},
 	/* Master and slaves can be from different fabrics */
 	{
@@ -275,8 +275,8 @@ static struct msm_bus_vectors mdp_sd_ebi_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 334080000,
-		.ib = 417600000,
+		.ab = 216000000,
+		.ib = 270000000 * 2,
 	},
 };
 static struct msm_bus_vectors mdp_vga_vectors[] = {
@@ -284,14 +284,14 @@ static struct msm_bus_vectors mdp_vga_vectors[] = {
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_SMI,
-		.ab = 175110000,
-		.ib = 218887500,
+		.ab = 216000000,
+		.ib = 270000000,
 	},
 	{
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
-		.ab = 175110000,
-		.ib = 218887500,
+		.ab = 216000000,
+		.ib = 270000000 * 2,
 	},
 };
 
@@ -308,7 +308,7 @@ static struct msm_bus_vectors mdp_720p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 230400000,
-		.ib = 288000000,
+		.ib = 288000000 * 2,
 	},
 };
 
@@ -325,7 +325,7 @@ static struct msm_bus_vectors mdp_1080p_vectors[] = {
 		.src = MSM_BUS_MASTER_MDP_PORT0,
 		.dst = MSM_BUS_SLAVE_EBI_CH0,
 		.ab = 334080000,
-		.ib = 417600000,
+		.ib = 550000000 * 2,
 	},
 };
 static struct msm_bus_paths mdp_bus_scale_usecases[] = {
@@ -547,10 +547,10 @@ static struct platform_device msm_fb_device = {
 };
 
 int mdp_core_clk_rate_table[] = {
-	59080000,
-	128000000,
-	160000000,
-	200000000,
+       85330000,
+       85330000,
+       160000000,
+       200000000,
 };
 
 struct mdp_reg shooter_color_v11[] = {
