@@ -210,6 +210,17 @@ config USB_OMAP
 	default USB_GADGET
 	select USB_GADGET_SELECTED
 
+config USB_OTG
+	boolean "OTG Support"
+	depends on USB_GADGET_OMAP && ARCH_OMAP_OTG && USB_OHCI_HCD
+	help
+	   The most notable feature of USB OTG is support for a
+	   "Dual-Role" device, which can act as either a device
+	   or a host.  The initial role choice can be changed
+	   later, when two dual-role devices talk to each other.
+
+	   Select this only if your OMAP board has a Mini-AB connector.
+
 config USB_GADGET_PXA25X
 	boolean "PXA 25x or IXP 4xx"
 	depends on (ARCH_PXA && PXA25x) || ARCH_IXP4XX
@@ -244,7 +255,6 @@ config USB_PXA25X_SMALL
 
 config USB_GADGET_R8A66597
 	boolean "Renesas R8A66597 USB Peripheral Controller"
-	depends on !USB_MUSB_HDRC
 	select USB_GADGET_DUALSPEED
 	help
 	   R8A66597 is a discrete USB host and peripheral controller chip that
@@ -355,7 +365,6 @@ config USB_GADGET_MUSB_HDRC
 
 config USB_GADGET_M66592
 	boolean "Renesas M66592 USB Peripheral Controller"
-	depends on !USB_MUSB_HDRC
 	select USB_GADGET_DUALSPEED
 	help
 	   M66592 is a discrete USB peripheral controller chip that
@@ -502,9 +511,27 @@ config USB_LANGWELL
 # LAST -- dummy/emulated controller
 #
 
+config USB_GADGET_MSM_72K
+	boolean "MSM 72K Device Controller"
+	depends on ARCH_MSM
+	select USB_GADGET_SELECTED
+	select USB_GADGET_DUALSPEED
+	help
+	   USB gadget driver for Qualcomm MSM 72K architecture.
+
+	   Say "y" to link the driver statically, or "m" to build a
+	   dynamically linked module called "msm72k" and force all
+	   gadget drivers to also be dynamically linked.
+
+config USB_MSM_72K
+	tristate
+	depends on USB_GADGET_MSM_72K
+	default USB_GADGET
+	select USB_GADGET_SELECTED
+
 config USB_GADGET_DUMMY_HCD
 	boolean "Dummy HCD (DEVELOPMENT)"
-	depends on !USB_MUSB_HDRC && (USB=y || (USB=m && USB_GADGET=m))
+	depends on USB=y || (USB=m && USB_GADGET=m)
 	select USB_GADGET_DUALSPEED
 	help
 	  This host controller driver emulates USB, looping all data transfer
