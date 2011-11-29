@@ -55,7 +55,6 @@
 
 
 #include <asm/unaligned.h>
-#include <plat/omap-pm.h>
 
 
 /*
@@ -652,8 +651,6 @@ static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 	curlun->num_sectors = num_sectors;
 	LDBG(curlun, "open backing file: %s\n", filename);
 	rc = 0;
-	/* Hold 800 MHz MPU constarint */
-	omap_pm_set_min_mpu_freq((struct device *) curlun, 800000000);
 
 out:
 	filp_close(filp, current->files);
@@ -667,8 +664,6 @@ static void fsg_lun_close(struct fsg_lun *curlun)
 		LDBG(curlun, "close backing file\n");
 		fput(curlun->filp);
 		curlun->filp = NULL;
-		/* Release MPU freq constarint */
-		omap_pm_set_min_mpu_freq((struct device *) curlun, -1);
 	}
 }
 

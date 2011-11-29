@@ -98,7 +98,7 @@
 #include <mach/board_htc.h>
 #include <linux/i2c/isl9519.h>
 #include <mach/tpa2051d3.h>
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 #include <linux/usb/android_composite.h>
 #endif
 #include <linux/regulator/consumer.h>
@@ -654,7 +654,7 @@ static struct platform_device cable_detect_device = {
 	},
 };
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 static struct usb_mass_storage_platform_data mass_storage_pdata = {
 	.nluns		= 1,
 	.vendor		= "HTC",
@@ -669,7 +669,7 @@ static struct platform_device usb_mass_storage_device = {
 	},
 };
 
-#ifdef CONFIG_USB_ANDROID_RNDIS
+#ifdef CONFIG_USB_G_ANDROID_RNDIS
 static struct usb_ether_platform_data rndis_pdata = {
 	/* ethaddr is filled by board_serialno_setup */
 	.vendorID  = 0x18d1,
@@ -2440,7 +2440,7 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_MSM_DSPS
 	&msm_dsps_device,
 #endif
-#ifdef CONFIG_USB_ANDROID_QCT_DIAG
+#ifdef CONFIG_USB_G_ANDROID_QCT_DIAG
        &usb_diag_device,
 #endif
 #ifdef CONFIG_BATTERY_MSM
@@ -4917,7 +4917,7 @@ static struct msm_rpm_platform_data msm_rpm_data = {
 #endif
 
 
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 static void doubleshot_add_usb_devices(void)
 {
 	printk("%s\n", __func__);
@@ -4936,7 +4936,7 @@ static void doubleshot_add_usb_devices(void)
 	config_doubleshot_usb_id_gpios(0);
 	platform_device_register(&msm_device_hsusb);
 
-#ifdef CONFIG_USB_ANDROID_RNDIS
+#ifdef CONFIG_USB_G_ANDROID_RNDIS
 	platform_device_register(&rndis_device);
 #endif
 
@@ -5073,7 +5073,7 @@ static void __init doubleshot_init(void)
 
 	dot_init_panel(msm_fb_resources, ARRAY_SIZE(msm_fb_resources));
 	register_i2c_devices();
-#ifdef CONFIG_USB_ANDROID
+#ifdef CONFIG_USB_G_ANDROID
 	doubleshot_add_usb_devices();
 #endif
 	msm_pm_set_platform_data(msm_pm_data, ARRAY_SIZE(msm_pm_data));

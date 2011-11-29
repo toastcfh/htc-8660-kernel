@@ -1743,7 +1743,7 @@ int msm_add_host(unsigned int host, struct msm_usb_host_platform_data *plat)
 }
 #endif
 
-#ifdef CONFIG_USB_ANDROID_QCT_DIAG
+#ifdef CONFIG_USB_G_ANDROID_QCT_DIAG
 #define PID_MAGIC_ID		0x71432909
 #define SERIAL_NUM_MAGIC_ID	0x61945374
 #define SERIAL_NUMBER_LENGTH	127
