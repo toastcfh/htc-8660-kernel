@@ -339,6 +339,7 @@ struct msm_adspdec_database {
 	struct dec_instance_table *dec_instance_list;
 };
 
+struct dsi_cmd_desc;
 struct msm_panel_common_pdata {
 	uintptr_t hw_revision_addr;
 	int gpio;
@@ -364,6 +365,9 @@ struct msm_panel_common_pdata {
 	struct panel_dcr_info *dcr_panel_pinfo;
 	unsigned int auto_bkl_stat;
 	int (*bkl_enable)(int);
+#ifdef CONFIG_MACH_SHOOTER_U
+	int (*mipi_send_cmds)(struct dsi_cmd_desc *cmds, uint32_t len);
+#endif
 };
 
 struct lcdc_platform_data {

@@ -40,8 +40,7 @@
 #include "../board-shooter_u.h"
 #include "../devices-msm8x60.h"
 #include "../../../../drivers/video/msm_8x60/mdp_hw.h"
-#include "../../../../drivers/video/msm_8x60/mipi_dsi.h"
-
+#include "../../../../drivers/video/msm_8x60/mipi_dsi_3d.h"
 
 extern int panel_type;
 
