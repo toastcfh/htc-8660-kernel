@@ -27,7 +27,7 @@
 #include "linux/types.h"
 
 #include <mach/board.h>
-#include <media/msm_camera-8x60.h>
+#include <media/msm_camera-liteon.h>
 #include <media/msm_camera_sensor.h>
 
 #ifdef CONFIG_MSM_CAMERA_DEBUG
@@ -288,7 +288,7 @@ struct msm_camvpe_fn {
 	
 	void (*vpe_cfg_offset)(int frame_pack, uint32_t pyaddr,
 		uint32_t pcbcraddr, struct timespec *ts, int output_id,
-	    int32_t x, int32_t y, int32_t frameid, struct msm_st_crop);
+		struct msm_st_half st_half, int frameid);
 
 	int *dis;
 };
@@ -509,9 +509,10 @@ struct msm_v4l2_driver {
 	int (*get_frame) (struct msm_sync *, struct msm_frame *);
 	int (*put_frame) (struct msm_sync *, struct msm_frame *);
 #ifdef CONFIG_CAMERA_ZSL
-	int (*get_pict_zsl) (struct msm_sync *, struct msm_frame *);
-#endif
+	int (*get_pict) (struct msm_sync *, struct msm_frame *);
+#else
 	int (*get_pict) (struct msm_sync *, struct msm_ctrl_cmd *);
+#endif
 	unsigned int (*drv_poll) (struct msm_sync *, struct file *,
 				struct poll_table_struct *);
 };
@@ -519,6 +520,9 @@ struct msm_v4l2_driver {
 int msm_v4l2_register(struct msm_v4l2_driver *);
 int msm_v4l2_unregister(struct msm_v4l2_driver *);
 void read_csi_irq(void);
+
+#define msm_camvfe_fn_init msm_camvfe_fn_init_liteon
+#define msm_camvpe_fn_init msm_camvpe_fn_init_liteon
 
 void msm_camvfe_init(void);
 int msm_camvfe_check(void *);

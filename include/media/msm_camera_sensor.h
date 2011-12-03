@@ -62,7 +62,10 @@
 #define CFG_GET_ISO             51
 #define CFG_GET_EXP_GAIN	52
 #define CFG_SET_FRAMERATE 	53
-#define CFG_MAX        	        54
+#define CFG_SENSOR_INIT		54
+#define CFG_GET_3D_CALI_DATA 	55
+#define CFG_GET_CALIB_DATA	56
+#define CFG_MAX                 57
 
 
 
@@ -76,7 +79,9 @@
 #define SENSOR_VIDEO_MODE	3
 #define SENSOR_VIDEO_60FPS_MODE	4
 #define SENSOR_GET_EXP 5
-
+#define SENSOR_HFR_60FPS_MODE 6
+#define SENSOR_HFR_90FPS_MODE 7
+#define SENSOR_HFR_120FPS_MODE 8
 
 #define SENSOR_QTR_SIZE			0
 #define SENSOR_FULL_SIZE		1
@@ -97,7 +102,6 @@
 
 #define CAMERA_3D_MODE 0
 #define CAMERA_2D_MODE 1
-
 
 struct sensor_pict_fps {
 	uint16_t prevfps;
@@ -131,7 +135,6 @@ struct wb_info_cfg {
 	uint16_t blue_gain;
 };
 
-
 /*Becker for AWB calibration*/
 struct fuse_id{
 	uint32_t fuse_id_word1;
@@ -149,7 +152,6 @@ struct reg_addr_val_pair_struct {
 struct lsc_cfg{
 	struct reg_addr_val_pair_struct lsc_table[144]; /*OV LSC table*/
 };
-
 
 // For 2nd CAM (mt9v113)
 enum antibanding_mode{
@@ -275,6 +277,68 @@ struct exp_cfg{
 	uint16_t flicker_compansation;
 };
 
+struct sensor_3d_exp_cfg {
+	uint16_t gain;
+	uint32_t line;
+	uint16_t r_gain;
+	uint16_t b_gain;
+	uint16_t gr_gain;
+	uint16_t gb_gain;
+	uint16_t gain_adjust;
+};
+
+struct sensor_3d_cali_data_t{
+	unsigned char left_p_matrix[3][4][8];
+	unsigned char right_p_matrix[3][4][8];
+	unsigned char square_len[8];
+	unsigned char focal_len[8];
+	unsigned char pixel_pitch[8];
+	uint16_t left_r;
+	uint16_t left_b;
+	uint16_t left_gb;
+	uint16_t left_af_far;
+	uint16_t left_af_mid;
+	uint16_t left_af_short;
+	uint16_t left_af_5um;
+	uint16_t left_af_50up;
+	uint16_t left_af_50down;
+	uint16_t right_r;
+	uint16_t right_b;
+	uint16_t right_gb;
+	uint16_t right_af_far;
+	uint16_t right_af_mid;
+	uint16_t right_af_short;
+	uint16_t right_af_5um;
+	uint16_t right_af_50up;
+	uint16_t right_af_50down;
+};
+
+struct sensor_init_cfg {
+	uint8_t prev_res;
+	uint8_t pict_res;
+};
+
+struct sensor_calib_data {
+	/* Color Related Measurements */
+	uint16_t r_over_g;
+	uint16_t b_over_g;
+	uint16_t gr_over_gb;
+
+	/* Lens Related Measurements */
+	uint16_t macro_2_inf;
+	uint16_t inf_2_macro;
+	uint16_t stroke_amt;
+	uint16_t af_pos_1m;
+	uint16_t af_pos_inf;
+};
+
+struct sensor_large_data {
+	int cfgtype;
+	union {
+		struct sensor_3d_cali_data_t sensor_3d_cali_data;
+	} data;
+};
+
 struct sensor_cfg_data {
 	int cfgtype;
 	int mode;
@@ -291,6 +355,7 @@ struct sensor_cfg_data {
 		uint16_t pictp_pl;
 		uint32_t pict_max_exp_lc;
 		uint16_t p_fps;
+		struct sensor_init_cfg init_info;
 		uint16_t flash_exp_div;
 		uint16_t real_iso_value;
 		uint16_t down_framerate;
@@ -299,6 +364,8 @@ struct sensor_cfg_data {
 		struct focus_cfg focus;
 		struct fps_cfg fps;
 		struct wb_info_cfg wb_info;
+		struct sensor_3d_exp_cfg sensor_3d_exp;
+		struct sensor_calib_data calib_info;
 		struct fuse_id fuse;
 		struct lsc_cfg lsctable;/*Vincent for LSC calibration*/
 		struct otp_cfg sp3d_otp_cfg;
@@ -317,9 +384,6 @@ struct sensor_cfg_data {
 		enum sensor_af_mode af_mode_value;
 	} cfg;
 };
-
-
-
 
 #define GET_NAME			0
 #define GET_PREVIEW_LINE_PER_FRAME	1

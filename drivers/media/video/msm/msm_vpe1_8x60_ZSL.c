@@ -809,9 +809,8 @@ static int vpe_proc_general(struct msm_vpe_cmd *cmd)
 					GFP_ATOMIC);
 		if (!cmdp) {
 			rc = -ENOMEM;
-			CDBG("[CAM] %s: cmdp allocation failed. \n", __func__);
 			goto vpe_proc_general_done;
-			}
+		}
 		if (copy_from_user(cmdp,
 			(void __user *)(cmd->value),
 			VPE_OPERATION_MODE_CFG_LEN)) {
@@ -895,7 +894,7 @@ static int vpe_proc_general(struct msm_vpe_cmd *cmd)
 		break;
 	}
 vpe_proc_general_done:
-	kfree(cmdp);
+	if (cmdp) kfree(cmdp);
 	return rc;
 }
 
@@ -1018,12 +1017,10 @@ int msm_vpe_config(struct msm_vpe_cfg_cmd *cmd, void *data)
 	case CMD_AXI_CFG_SNAP_VPE:
 	case CMD_AXI_CFG_SNAP_THUMB_VPE: {
 		struct axidata *axid;
-		uint32_t *axio = NULL;
 		axid = data;
 		if (!axid)
 			return -EFAULT;
 		vpe_config_axi(axid);
-		kfree(axio);
 		break;
 	}
 	default:
@@ -1367,12 +1364,7 @@ static struct platform_driver msm_vpe_driver = {
 
 static int __init msm_vpe_init(void)
 {
-	extern unsigned engineerid;
-	extern unsigned system_rev;
-	if (system_rev == 0x80 && engineerid == 0x1)
-		return 0;
-	else
-		return platform_driver_register(&msm_vpe_driver);
+	return platform_driver_register(&msm_vpe_driver);
 }
 module_init(msm_vpe_init);
 

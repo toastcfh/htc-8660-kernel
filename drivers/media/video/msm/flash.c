@@ -23,7 +23,11 @@
 #include <linux/pmic8058-pwm.h>
 #include <linux/hrtimer.h>
 #include <mach/pmic.h>
+#ifdef CONFIG_CAMERA_ZSL
+#include <mach/camera-8x60_ZSL.h>
+#else
 #include <mach/camera-8x60.h>
+#endif
 #include <mach/board.h>
 #include <mach/gpio.h>
 

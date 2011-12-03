@@ -79,7 +79,11 @@
 #ifdef CONFIG_MSM_CAMERA_7X30
 #include <mach/camera.h>
 #elif defined(CONFIG_MSM_CAMERA_8X60)
+#ifdef CONFIG_CAMERA_ZSL
+#include <mach/camera-8x60_ZSL.h>
+#else
 #include <mach/camera-8x60.h>
+#endif
 #endif
 
 #include "msm_gemini_platform.h"

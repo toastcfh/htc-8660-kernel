@@ -10,8 +10,8 @@
  *       disclaimer in the documentation and/or other materials provided
  *       with the distribution.
  *     * Neither the name of Code Aurora Forum, Inc. nor the names of its
- *		 contributors may be used to endorse or promote products derived
- *		 from this software without specific prior written permission.
+ *       contributors may be used to endorse or promote products derived
+ *       from this software without specific prior written permission.
  *
  * THIS SOFTWARE IS PROVIDED "AS IS" AND ANY EXPRESS OR IMPLIED
  * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
@@ -29,11 +29,7 @@
 #ifndef _msm_vpe1_h_
 #define _msm_vpe1_h_
 
-#ifdef CONFIG_CAMERA_ZSL
-#include <mach/camera-8x60_ZSL.h>
-#else
-#include <mach/camera-8x60.h>
-#endif
+#include <mach/camera-liteon.h>
 
 /***********  start of register offset *********************/
 #define VPE_INTR_ENABLE_OFFSET                0x0020
@@ -142,7 +138,7 @@ struct vpe_isr_queue_cmd_type {
 };
 
 enum VPE_MESSAGE_ID {
-    MSG_ID_VPE_OUTPUT_V = 7, /* To match with that of VFE */
+	MSG_ID_VPE_OUTPUT_V = 7, /* To match with that of VFE */
 	MSG_ID_VPE_OUTPUT_ST_L,
 	MSG_ID_VPE_OUTPUT_ST_R,
 };
@@ -157,9 +153,9 @@ struct vpe_device_type {
 };
 
 struct dis_offset_type {
-    int32_t  dis_offset_x;
-	int32_t  dis_offset_y;
-    uint32_t  frame_id;
+	int32_t dis_offset_x;
+	int32_t dis_offset_y;
+	uint32_t frame_id;
 };
 
 struct vpe_ctrl_type {
@@ -172,7 +168,7 @@ struct vpe_ctrl_type {
 	void              *extdata;
 	uint32_t          extlen;
 	struct msm_vpe_callback *resp;
-	uint32_t           in_h_w;
+	uint32_t          in_h_w;
 	uint32_t          out_h;  /* this is BEFORE rotation. */
 	uint32_t          out_w;  /* this is BEFORE rotation. */
 	uint32_t          dis_en;
@@ -243,7 +239,17 @@ struct phase_val_t {
 	int32_t phase_step_y;
 };
 
-extern struct vpe_ctrl_type    *vpe_ctrl;
+//FIX ME, temp solution for liton vpe
+#define vpe_ctrl vpe_ctrl_liteon
+#define msm_vpe_open msm_vpe_open_liteon
+#define msm_vpe_release msm_vpe_release_liteon
+#define msm_vpe_reg msm_vpe_reg_liteon
+#define msm_send_frame_to_vpe msm_send_frame_to_vpe_liteon
+#define msm_vpe_config msm_vpe_config_liteon
+#define msm_vpe_cfg_update msm_vpe_cfg_update_liteon
+#define msm_vpe_offset_update msm_vpe_offset_update_liteon
+
+extern struct vpe_ctrl_type *vpe_ctrl;
 
 int msm_vpe_open(void);
 int msm_vpe_release(void);
@@ -253,7 +259,7 @@ void msm_send_frame_to_vpe(uint32_t pyaddr, uint32_t pcbcraddr,
 int msm_vpe_config(struct msm_vpe_cfg_cmd *cmd, void *data);
 int msm_vpe_cfg_update(void *pinfo);
 void msm_vpe_offset_update(int frame_pack, uint32_t pyaddr, uint32_t pcbcraddr,
-	struct timespec *ts, int output_id, int32_t x, int32_t y,
-	int32_t frameid, struct msm_st_crop stCropInfo);
+	struct timespec *ts, int output_id, struct msm_st_half st_half,
+	int frameid);
 #endif /*_msm_vpe1_h_*/
 

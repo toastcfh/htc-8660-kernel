@@ -25,7 +25,11 @@
 #include <linux/slab.h>
 #include <media/msm_camera_sensor.h>
 #include <mach/gpio.h>
+#ifdef CONFIG_CAMERA_ZSL
+#include <mach/camera-8x60_ZSL.h>
+#else
 #include <mach/camera-8x60.h>
+#endif
 #include "mt9d015.h"
 /*=============================================================
 	SENSOR REGISTER DEFINES

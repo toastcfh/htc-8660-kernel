@@ -1,19 +1,30 @@
-/* Copyright (c) 2009-2010, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011, Code Aurora Forum. All rights reserved.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ * 1. Redistributions of source code must retain the above copyright
+ *    notice, and the entire permission notice in its entirety,
+ *    including the disclaimer of warranties.
+ * 2. Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in the
+ *    documentation and/or other materials provided with the distribution.
+ * 3. The name of the author may not be used to endorse or promote
+ *    products derived from this software without specific prior
+ *    written permission.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
+ * THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
+ * WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+ * OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE, ALL OF
+ * WHICH ARE HEREBY DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT
+ * OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR
+ * BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+ * LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+ * USE OF THIS SOFTWARE, EVEN IF NOT ADVISED OF THE POSSIBILITY OF SUCH
+ * DAMAGE.
  */
 
 #ifndef __LINUX_MSM_CAMERA_H
@@ -23,17 +34,13 @@
 #include <sys/types.h>
 #endif
 #include <linux/types.h>
-#include <asm/sizes.h>
 #include <linux/ioctl.h>
+#include <linux/cdev.h>
 #ifdef MSM_CAMERA_GCC
 #include <time.h>
 #else
 #include <linux/time.h>
 #endif
-
-#define MAX_SENSOR_NUM  5
-#define MAX_SENSOR_NAME 32
-
 
 #define MSM_CAM_IOCTL_MAGIC 'm'
 
@@ -85,13 +92,8 @@
 #define MSM_CAM_IOCTL_AXI_CONFIG \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 16, struct msm_camera_vfe_cfg_cmd *)
 
-#ifdef CONFIG_CAMERA_ZSL
 #define MSM_CAM_IOCTL_GET_PICTURE \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 17, struct msm_frame *)
-#else
-#define MSM_CAM_IOCTL_GET_PICTURE \
-	_IOW(MSM_CAM_IOCTL_MAGIC, 17, struct msm_camera_ctrl_cmd *)
-#endif
 
 #define MSM_CAM_IOCTL_SET_CROP \
 	_IOW(MSM_CAM_IOCTL_MAGIC, 18, struct crop_info *)
@@ -150,26 +152,17 @@
 #define MSM_CAM_IOCTL_GET_CAMERA_INFO \
 	_IOR(MSM_CAM_IOCTL_MAGIC, 36, struct msm_camera_info *)
 
+#define MSM_CAM_IOCTL_UNBLOCK_POLL_PIC_FRAME \
+	_IO(MSM_CAM_IOCTL_MAGIC, 37)
+
+#define MSM_CAM_IOCTL_RELEASE_PIC_BUFFER \
+	_IOW(MSM_CAM_IOCTL_MAGIC, 38, struct camera_enable_cmd *)
+
 #define MSM_CAM_IOCTL_PUT_ST_FRAME \
-	_IOW(MSM_CAM_IOCTL_MAGIC, 37, struct msm_camera_st_frame *)
+	_IOW(MSM_CAM_IOCTL_MAGIC, 39, struct msm_camera_st_frame *)
 
-#ifdef CONFIG_CAMERA_ZSL
-#define MSM_CAM_IOCTL_UNBLOCK_POLL_PIC_FRAME _IO(MSM_CAM_IOCTL_MAGIC, 38)
-
-#define MSM_CAM_IOCTL_RELEASE_PIC_BUFFER _IOW(MSM_CAM_IOCTL_MAGIC, 39, struct camera_enable_cmd *)
-
-#define MSM_CAM_IOCTL_SEND_OUTPUT_S \
-	_IOW(MSM_CAM_IOCTL_MAGIC, 40, uint8_t *)
-
-#define MSM_CAM_IOCTL_DROP_OUTPUT_S \
-       _IOW(MSM_CAM_IOCTL_MAGIC, 42, uint8_t *)
-#endif
-
-#define MSM_CAM_IOCTL_SET_CONFIG_CAMERA_ZSL \
-	_IOW(MSM_CAM_IOCTL_MAGIC, 41, bool *)
-
-#define MSM_CAM_IOCTL_EFFECT_STATE_CFG \
-	_IOW(MSM_CAM_IOCTL_MAGIC, 43, int32_t *)
+#define MSM_CAM_IOCTL_GET_CONFIG_INFO \
+	_IOR(MSM_CAM_IOCTL_MAGIC, 40, struct msm_cam_config_dev_info *)
 
 #define MSM_CAMERA_LED_OFF  0
 #define MSM_CAMERA_LED_LOW  1
@@ -178,7 +171,10 @@
 #define MSM_CAMERA_STROBE_FLASH_NONE 0
 #define MSM_CAMERA_STROBE_FLASH_XENON 1
 
+#define MSM_MAX_CAMERA_SENSORS  5
+#define MAX_SENSOR_NAME 32
 
+#define MSM_MAX_CAMERA_CONFIGS 2
 
 #define PP_SNAP  0x01
 #define PP_RAW_SNAP ((0x01)<<1)
@@ -209,33 +205,35 @@ struct msm_ctrl_cmd {
 	int resp_fd; /* FIXME: to be used by the kernel, pass-through for now */
 };
 
-#ifdef CONFIG_CAMERA_ZSL
-struct msm_vfe_evt_msg {
-#else
+struct msm_isp_ctrl_cmd {
+	uint16_t type;
+	uint16_t length;
+	uint16_t status;
+	uint32_t timeout_ms;
+	int resp_fd; /* FIXME: to be used by the kernel, pass-through for now */
+	/* maximum possible data size that can be sent to user space is only
+		64 bytes */
+	char value[40];
+};
+
 struct msm_cam_evt_msg {
-#endif
 	unsigned short type;	/* 1 == event (RPC), 0 == message (adsp) */
 	unsigned short msg_id;
 	unsigned int len;	/* size in, number of bytes out */
 	uint32_t frame_id;
 	void *data;
 };
+
 struct msm_isp_evt_msg {
 	unsigned short type;	/* 1 == event (RPC), 0 == message (adsp) */
 	unsigned short msg_id;
 	unsigned int len;	/* size in, number of bytes out */
 	/* maximum possible data size that can be
-i	  sent to user space as v4l2 data structure
+	  sent to user space as v4l2 data structure
 	  is only of 64 bytes */
 	uint8_t data[48];
 };
-struct msm_vpe_evt_msg {
-	unsigned short type; /* 1 == event (RPC), 0 == message (adsp) */
-	unsigned short msg_id;
-	unsigned int len; /* size in, number of bytes out */
-	uint32_t frame_id;
-	void *data;
-};
+
 struct msm_isp_stats_event_ctrl {
 	unsigned short resptype;
 	union {
@@ -260,11 +258,7 @@ struct msm_stats_event_ctrl {
 	int timeout_ms;
 	struct msm_ctrl_cmd ctrl_cmd;
 	/* struct  vfe_event_t  stats_event; */
-#ifdef CONFIG_CAMERA_ZSL
-	struct msm_vfe_evt_msg stats_event;
-#else
 	struct msm_cam_evt_msg stats_event;
-#endif
 };
 
 /* 2. config command: config command(from config thread); */
@@ -328,11 +322,9 @@ struct msm_camera_cfg_cmd {
 #define CMD_STATS_CS_ENABLE 40
 #define CMD_VPE 41
 #define CMD_AXI_CFG_VPE 42
-#define CMD_AXI_CFG_SNAP_VPE 43
-#define CMD_AXI_CFG_SNAP_THUMB_VPE 44
-#ifdef CONFIG_CAMERA_ZSL
-#define CMD_AXI_CFG_ZSL 45
-#endif
+#define CMD_AXI_CFG_ZSL 43
+#define CMD_AXI_CFG_SNAP_VPE 44
+#define CMD_AXI_CFG_SNAP_THUMB_VPE 45
 
 /* vfe config command: config command(from config thread)*/
 struct msm_vfe_cfg_cmd {
@@ -362,8 +354,8 @@ struct camera_enable_cmd {
 #define MSM_PMEM_AF			7
 #define MSM_PMEM_AEC			8
 #define MSM_PMEM_AWB			9
-#define MSM_PMEM_RS		    	10
-#define MSM_PMEM_CS	    		11
+#define MSM_PMEM_RS			10
+#define MSM_PMEM_CS			11
 #define MSM_PMEM_IHIST			12
 #define MSM_PMEM_SKIN			13
 #define MSM_PMEM_VIDEO			14
@@ -417,22 +409,18 @@ struct outputCfg {
 #define CAMIF_TO_AXI_VIA_OUTPUT_2 4
 #define OUTPUT_1_AND_CAMIF_TO_AXI_VIA_OUTPUT_2 5
 #define OUTPUT_2_AND_CAMIF_TO_AXI_VIA_OUTPUT_1 6
-#ifdef CONFIG_CAMERA_ZSL
 #define OUTPUT_1_2_AND_3 7
-#define LAST_AXI_OUTPUT_MODE_ENUM 8
-#else
-#define LAST_AXI_OUTPUT_MODE_ENUM = OUTPUT_2_AND_CAMIF_TO_AXI_VIA_OUTPUT_1 7
-#endif
+#define LAST_AXI_OUTPUT_MODE_ENUM = OUTPUT_1_2_AND_3 7
 
 #define MSM_FRAME_PREV_1	0
 #define MSM_FRAME_PREV_2	1
 #define MSM_FRAME_ENC		2
 
-#define OUTPUT_TYPE_P		(1<<0)
-#define OUTPUT_TYPE_T		(1<<1)
-#define OUTPUT_TYPE_S		(1<<2)
-#define OUTPUT_TYPE_V		(1<<3)
-#define OUTPUT_TYPE_L		(1<<4)
+#define OUTPUT_TYPE_P    (1<<0)
+#define OUTPUT_TYPE_T    (1<<1)
+#define OUTPUT_TYPE_S    (1<<2)
+#define OUTPUT_TYPE_V    (1<<3)
+#define OUTPUT_TYPE_L    (1<<4)
 #define OUTPUT_TYPE_ST_L (1<<5)
 #define OUTPUT_TYPE_ST_R (1<<6)
 #define OUTPUT_TYPE_ST_D (1<<7)
@@ -457,8 +445,8 @@ struct msm_frame {
 	uint32_t error_code;
 	struct fd_roi_info roi_info;
 	uint32_t frame_id;
-
-	/* Must match to user space - msm_camera8x60_3D.h */
+	
+	/* Must atch to user space - msm_camera8x60_3D.h */
 	int stcam_quality_ind;
 	uint32_t stcam_conv_value;
 };
@@ -515,7 +503,9 @@ struct msm_stats_buf {
 #define MSM_V4L2_QUERY		7
 #define MSM_V4L2_GET_CROP	8
 #define MSM_V4L2_SET_CROP	9
-#define MSM_V4L2_MAX		10
+#define MSM_V4L2_OPEN		10
+#define MSM_V4L2_CLOSE		11
+#define MSM_V4L2_MAX		12
 
 #define V4L2_CAMERA_EXIT 	43
 struct crop_info {
@@ -530,7 +520,15 @@ struct msm_postproc {
 	struct msm_frame fmain;
 };
 
+struct msm_snapshot_pp_status {
+	void *status;
+};
 
+enum sensor_type_t {
+	BAYER,
+	YUV,
+	JPEG_SOC,
+};
 
 enum flash_type {
 	LED_FLASH,
@@ -548,6 +546,21 @@ struct strobe_flash_ctrl_data {
 	int charge_en;
 };
 
+struct msm_camera_info {
+	int num_cameras;
+	uint8_t has_3d_support[MSM_MAX_CAMERA_SENSORS];
+	uint8_t is_internal_cam[MSM_MAX_CAMERA_SENSORS];
+	uint32_t s_mount_angle[MSM_MAX_CAMERA_SENSORS];
+	const char *video_dev_name[MSM_MAX_CAMERA_SENSORS];
+	enum sensor_type_t sensor_type[MSM_MAX_CAMERA_SENSORS];
+
+};
+
+struct msm_cam_config_dev_info {
+	int num_config_nodes;
+	const char *config_dev_name[MSM_MAX_CAMERA_CONFIGS];
+};
+
 struct flash_ctrl_data {
 	int flashtype;
 	union {
@@ -556,21 +569,19 @@ struct flash_ctrl_data {
 	} ctrl_data;
 };
 
-struct msm_snapshot_pp_status {
-	void *status;
-};
+#define GET_NAME			0
+#define GET_PREVIEW_LINE_PER_FRAME	1
+#define GET_PREVIEW_PIXELS_PER_LINE	2
+#define GET_SNAPSHOT_LINE_PER_FRAME	3
+#define GET_SNAPSHOT_PIXELS_PER_LINE	4
+#define GET_SNAPSHOT_FPS		5
+#define GET_SNAPSHOT_MAX_EP_LINE_CNT	6
 
 struct msm_camsensor_info {
 	char name[MAX_SENSOR_NAME];
 	uint8_t flash_enabled;
 	int8_t total_steps;
 	uint8_t support_3d;
-};
-
-struct msm_camera_info {
-	int num_cameras;
-	uint8_t has_3d_support[MAX_SENSOR_NUM];
-	uint8_t is_internal_cam[MAX_SENSOR_NUM];
 };
 
 #endif /* __LINUX_MSM_CAMERA_H */
