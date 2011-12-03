@@ -310,18 +310,29 @@ static int __devinit pmic8058_vib_probe(struct platform_device *pdev)
 
 	spin_lock_init(&vib->lock);
 
+#ifdef VCM_WORKAROUND_TEST
+#if defined(CONFIG_MACH_RUBY)
 	INIT_WORK(&pmic8058_vib_vcm_work, pmic8058_vib_vcm_workaround);
 	pmic8058_vib_vcm_wq = create_singlethread_workqueue("pmic8058_vib_vcm_wq");
 	if (!pmic8058_vib_vcm_wq) {
 		VIB_ERR_LOG("%s, create_singlethread_workqueue pmic8058_vib_vcm_wq fail\n", __func__);
 		goto err_create_pmic8058_vib_vcm_wq;
 	}
+#endif
+#endif
 
 	INIT_WORK(&vib->work, pmic8058_vib_update);
 	pmic8058_vib_wq = create_singlethread_workqueue("pmic8058_vib_wq");
 	if (!pmic8058_vib_wq) {
 		VIB_ERR_LOG("%s, create_singlethread_workqueue pmic8058_vib_wq fail\n", __func__);
+
+#ifdef VCM_WORKAROUND_TEST
+#if defined(CONFIG_MACH_RUBY)
 		goto err_create_pmic8058_vib_wq;
+#endif
+#else
+		goto err_read_vib;
+#endif
 	}
 
 	hrtimer_init(&vib->vib_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
@@ -362,9 +373,15 @@ err_read_vib:
 		destroy_workqueue(pmic8058_vib_wq);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
+
+#ifdef VCM_WORKAROUND_TEST
+#if defined(CONFIG_MACH_RUBY)
 err_create_pmic8058_vib_wq:
 	destroy_workqueue(pmic8058_vib_vcm_wq);
 err_create_pmic8058_vib_vcm_wq:
+#endif
+#endif
+
 	kfree(vib);
 	return rc;
 }
