@@ -1,3 +1,7 @@
+#ifdef CONFIG_MACH_SHOOTER_U
+#include "atmel_224e_3d.c"
+#else
+
 /* drivers/input/touchscreen/atmel_224e.c - ATMEL Touch driver
  *
  * Copyright (C) 2011 HTC Corporation.
@@ -1800,4 +1804,6 @@ module_exit(atmel_224e_ts_exit);
 
 MODULE_DESCRIPTION("ATMEL Touch driver");
 MODULE_LICENSE("GPL");
+
+#endif
 

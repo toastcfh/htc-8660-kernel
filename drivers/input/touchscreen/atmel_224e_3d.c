@@ -1,10 +1,6 @@
-#ifdef CONFIG_MACH_SHOOTER_U
-#include "atmel_3d.c"
-#else
-
-/* drivers/input/touchscreen/atmel.c - ATMEL Touch driver
+/* drivers/input/touchscreen/atmel_224e.c - ATMEL Touch driver
  *
- * Copyright (C) 2009 HTC Corporation.
+ * Copyright (C) 2011 HTC Corporation.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -52,17 +48,12 @@
 #define RECALIB_NG                              1
 #define RECALIB_UNLOCK                          2
 #define RECALIB_DONE                            3
-#define ATCHCAL_DELAY                           200
-#define SAFE_TIMEOUT                            500
 
 struct atmel_ts_data {
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct workqueue_struct *atmel_wq;
-	struct workqueue_struct *atmel_delayed_wq;
 	struct work_struct work;
-	struct work_struct check_delta_work;
-	struct delayed_work unlock_work;
 	int (*power) (int on);
 	uint8_t unlock_attr;
 	struct early_suspend early_suspend;
@@ -79,7 +70,6 @@ struct atmel_ts_data {
 	uint8_t abs_width_max;
 	uint8_t first_pressed;
 	uint8_t valid_pressed_cnt;
-	uint8_t cal_after_unlock;
 	uint8_t debug_log_level;
 	struct atmel_finger_data finger_data[10];
 	uint8_t high_res_x_en;
@@ -93,20 +83,11 @@ struct atmel_ts_data {
 	uint16_t *filter_level;
 	uint8_t calibration_confirm;
 	uint64_t timestamp;
-	unsigned long valid_press_timeout;
-	unsigned long safe_unlock_timeout;
+	unsigned long timeout;
 	struct atmel_config_data config_setting[2];
-	int8_t wlc_config[7];
-	uint8_t wlc_freq[5];
-	uint8_t wlc_status;
 	int8_t noise_config[3];
 	uint8_t call_tchthr[2];
-	uint8_t locking_config[1];
 	uint8_t status;
-	uint8_t GCAF_sample;
-	uint8_t *GCAF_level;
-	uint8_t noisethr;
-	uint8_t noisethr_config;
 	uint8_t diag_command;
 	uint8_t psensor_status;
 	uint8_t *ATCH_EXT;
@@ -123,8 +104,8 @@ static void atmel_ts_early_suspend(struct early_suspend *h);
 static void atmel_ts_late_resume(struct early_suspend *h);
 #endif
 
-static void restore_normal_threshold(struct atmel_ts_data *ts);
-static void confirm_calibration(struct atmel_ts_data *ts, uint8_t recal, uint8_t reason);
+static void restore_normal_tchthr(struct atmel_ts_data *ts);
+static void confirm_calibration(struct atmel_ts_data *ts, int recal);
 static void multi_input_report(struct atmel_ts_data *ts);
 
 static int i2c_atmel_read(struct i2c_client *client, uint16_t address, uint8_t *data, uint8_t length)
@@ -354,22 +335,20 @@ static ssize_t atmel_regdump_show(struct device *dev,
 		return count;
 	numObj = ts_data->id->num_declared_objects - 1;
 	startAddr = get_object_address(ts_data, GEN_POWERCONFIG_T7);
-	endAddr = get_object_address(ts_data, SPT_CTECONFIG_T28);
-	endAddr += get_object_size(ts_data, SPT_CTECONFIG_T28) - 1;
-	if (ts_data->id->version >= 0x14) {
-		for (loop_i = startAddr; loop_i <= endAddr; loop_i++) {
-			ret_t = i2c_atmel_read(ts_data->client, loop_i, ptr, 1);
-			if (ret_t < 0) {
-				printk(KERN_WARNING "dump fail, addr: %d\n",
-								loop_i);
-			}
-			count += sprintf(buf + count, "addr[%3d]: %3d, ",
-								loop_i , *ptr);
-			if (((loop_i - startAddr) % 4) == 3)
-				count += sprintf(buf + count, "\n");
+	endAddr = get_object_address(ts_data, PROCG_NOISESUPPRESSION_T48);
+	endAddr += get_object_size(ts_data, PROCG_NOISESUPPRESSION_T48) - 1;
+	for (loop_i = startAddr; loop_i <= endAddr; loop_i++) {
+		ret_t = i2c_atmel_read(ts_data->client, loop_i, ptr, 1);
+		if (ret_t < 0) {
+			printk(KERN_WARNING "dump fail, addr: %d\n",
+							loop_i);
 		}
-		count += sprintf(buf + count, "\n");
+		count += sprintf(buf + count, "addr[%3d]: %3d, ",
+							loop_i , *ptr);
+		if (((loop_i - startAddr) % 4) == 3)
+			count += sprintf(buf + count, "\n");
 	}
+	count += sprintf(buf + count, "\n");
 	return count;
 }
 
@@ -388,24 +367,22 @@ static void regdump_to_kernel(void)
 		return;
 	numObj = ts_data->id->num_declared_objects - 1;
 	startAddr = get_object_address(ts_data, GEN_POWERCONFIG_T7);
-	endAddr = get_object_address(ts_data, SPT_CTECONFIG_T28);
-	endAddr += get_object_size(ts_data, SPT_CTECONFIG_T28) - 1;
-	if (ts_data->id->version >= 0x14) {
-		for (loop_i = startAddr; loop_i <= endAddr; loop_i++) {
-			ret_t = i2c_atmel_read(ts_data->client, loop_i, ptr, 1);
-			if (ret_t < 0) {
-				printk(KERN_WARNING "dump fail, addr: %d\n",
-								loop_i);
-			}
-			count += sprintf(buf + count, "addr[%3d]: %3d, ",
-								loop_i , *ptr);
-			if (((loop_i - startAddr) % 4) == 3) {
-				printk(KERN_INFO "%s\n", buf);
-				count = 0;
-			}
+	endAddr = get_object_address(ts_data, PROCG_NOISESUPPRESSION_T48);
+	endAddr += get_object_size(ts_data, PROCG_NOISESUPPRESSION_T48) - 1;
+	for (loop_i = startAddr; loop_i <= endAddr; loop_i++) {
+		ret_t = i2c_atmel_read(ts_data->client, loop_i, ptr, 1);
+		if (ret_t < 0) {
+			printk(KERN_WARNING "dump fail, addr: %d\n",
+							loop_i);
 		}
-		printk(KERN_INFO "%s\n", buf);
+		count += sprintf(buf + count, "addr[%3d]: %3d, ",
+							loop_i , *ptr);
+		if (((loop_i - startAddr) % 4) == 3) {
+			printk(KERN_INFO "%s\n", buf);
+			count = 0;
+		}
 	}
+	printk(KERN_INFO "%s\n", buf);
 	return;
 }
 #else
@@ -474,8 +451,8 @@ static ssize_t atmel_diag_show(struct device *dev,
 		get_object_address(ts_data, GEN_COMMANDPROCESSOR_T6) + T6_CFG_DIAG,
 		ts_data->diag_command);
 
-	x = T28_CFG_MODE0_X + ts_data->config_setting[NONE].config_T28[T28_CFG_MODE];
-	y = T28_CFG_MODE0_Y - ts_data->config_setting[NONE].config_T28[T28_CFG_MODE];
+	x = T46_CFG_MODE0_X + ts_data->config_setting[NONE].config_T46[T46_CFG_MODE];
+	y = T46_CFG_MODE0_Y - ts_data->config_setting[NONE].config_T46[T46_CFG_MODE];
 	count += sprintf(buf, "Channel: %d * %d\n", x, y);
 
 	for (loop_i = 0; loop_i < 4; loop_i++) {
@@ -497,7 +474,9 @@ static ssize_t atmel_diag_show(struct device *dev,
 				return count;
 			} else {
 				rawdata = data[loop_j+1] << 8 | data[loop_j];
-				count += sprintf(buf + count, "%6d", rawdata);
+				if (ts_data->diag_command == T6_CFG_DIAG_CMD_REF)
+					rawdata -= 0x4000; /* 16384 */
+				count += sprintf(buf + count, "%5d", rawdata);
 				if (((loop_i * 64 + loop_j / 2) % y) == (y - 1))
 					count += sprintf(buf + count, "\n");
 			}
@@ -539,28 +518,16 @@ static ssize_t atmel_unlock_store(struct device *dev,
 
 	printk(KERN_INFO "Touch: unlock change to %d\n", unlock);
 
-	if ((unlock == 2 || unlock == 3) && ts_data->id->version >= 0x20 &&
+	if (unlock == 2 &&
 		(ts_data->first_pressed || ts_data->finger_count) &&
-		ts_data->pre_data[0] < RECALIB_UNLOCK &&
-		ts_data->unlock_attr) {
-
-		ts_data->valid_press_timeout = jiffies + msecs_to_jiffies(15);
+		ts_data->pre_data[0] < RECALIB_UNLOCK && ts_data->unlock_attr) {
+		ts_data->timeout = jiffies + msecs_to_jiffies(15);
 		if (ts_data->finger_count == 0)
 			ts_data->valid_pressed_cnt = 1;
 		else /* unlock direction: left to right */
 			ts_data->valid_pressed_cnt = 0;
-
-		ts_data->cal_after_unlock = 0;
 		ts_data->pre_data[0] = RECALIB_UNLOCK;
-		restore_normal_threshold(ts_data);
-		i2c_atmel_write_byte_data(ts_data->client,
-			get_object_address(ts_data, GEN_ACQUISITIONCONFIG_T8) +
-			T8_CFG_ATCHCALST, 0x01);
-		if (time_after(jiffies, ts_data->safe_unlock_timeout))
-			queue_delayed_work(ts_data->atmel_delayed_wq, &ts_data->unlock_work,
-				msecs_to_jiffies(ATCHCAL_DELAY));
-		else
-			printk(KERN_INFO "Touch: unsafe unlock, give up delta check\n");
+		restore_normal_tchthr(ts_data);
 	}
 
 	return count;
@@ -632,184 +599,11 @@ static void atmel_touch_sysfs_deinit(void)
 }
 
 #endif
-static int check_delta(struct atmel_ts_data*ts)
-{
-	int8_t data[T37_DATA + T37_PAGE_SIZE];
-	uint8_t loop_i;
-	int16_t rawdata, count = 0;
 
-	memset(data, 0xFF, sizeof(data));
-	i2c_atmel_write_byte_data(ts->client,
-		get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-		T6_CFG_DIAG, T6_CFG_DIAG_CMD_DELTAS);
-
-	for (loop_i = 0;
-		!(data[T37_MODE] == T6_CFG_DIAG_CMD_DELTAS && data[T37_PAGE] == T37_PAGE_NUM0) && loop_i < 10; loop_i++) {
-		msleep(5);
-		i2c_atmel_read(ts->client,
-			get_object_address(ts, DIAGNOSTIC_T37), data, 2);
-	}
-	if (loop_i == 10)
-		printk(KERN_ERR "%s: Diag data not ready\n", __func__);
-
-	i2c_atmel_read(ts->client,
-		get_object_address(ts, DIAGNOSTIC_T37),
-		data, T37_DATA + T37_PAGE_SIZE);
-	if (data[T37_MODE] == T6_CFG_DIAG_CMD_DELTAS &&
-		data[T37_PAGE] == T37_PAGE_NUM0) {
-		for (loop_i = T37_DATA;
-			loop_i < (T37_DATA + T37_PAGE_SIZE - 1); loop_i += 2) {
-			rawdata = data[loop_i+1] << 8 | data[loop_i];
-			if (abs(rawdata) > 50)
-				count++;
-		}
-		if (count > 32)
-			return 1;
-	}
-	return 0;
-}
-
-static int check_delta_full(struct atmel_ts_data *ts,
-		uint8_t delta, uint8_t percent, uint8_t print_log)
-{
-	int8_t data[T37_DATA + T37_PAGE_SIZE];
-	uint8_t loop_i, loop_j;
-	uint8_t cnt, pos_cnt, neg_cnt, node_thr_cnt;
-	uint8_t x, y;
-	int16_t rawdata;
-
-	cnt = pos_cnt = neg_cnt = 0;
-	i2c_atmel_write_byte_data(ts->client,
-		get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-		T6_CFG_DIAG, T6_CFG_DIAG_CMD_DELTAS);
-
-	x = T28_CFG_MODE0_X + ts->config_setting[NONE].config_T28[T28_CFG_MODE];
-	y = T28_CFG_MODE0_Y - ts->config_setting[NONE].config_T28[T28_CFG_MODE];
-	node_thr_cnt = (x * y) * percent / 100;
-
-	for (loop_i = 0; loop_i < 4; loop_i++) {
-		memset(data, 0xFF, sizeof(data));
-		for (loop_j = 0;
-			!(data[T37_MODE] == T6_CFG_DIAG_CMD_DELTAS && data[T37_PAGE] == loop_i) && loop_j < 10; loop_j++) {
-			msleep(5);
-			i2c_atmel_read(ts->client,
-				get_object_address(ts, DIAGNOSTIC_T37), data, 2);
-		}
-		if (loop_j == 10)
-			printk(KERN_ERR "%s: Diag data not ready\n", __func__);
-
-		i2c_atmel_read(ts->client,
-			get_object_address(ts, DIAGNOSTIC_T37),
-			data, T37_DATA + T37_PAGE_SIZE);
-		for (loop_j = T37_DATA;
-			loop_j < (T37_DATA + T37_PAGE_SIZE - 1); loop_j += 2) {
-			rawdata = data[loop_j+1] << 8 | data[loop_j];
-			cnt++;
-			if (rawdata > delta)
-				pos_cnt++;
-			else if (rawdata < -(delta))
-				neg_cnt++;
-
-			if (cnt >= x * y)
-				break;
-		}
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-			T6_CFG_DIAG, T6_CFG_DIAG_CMD_PAGEUP);
-	}
-
-	if (pos_cnt + neg_cnt > node_thr_cnt) {
-		if (print_log)
-			printk(KERN_INFO "Touch: channels C=%d P=%d N=%d T=%d\n",
-				cnt, pos_cnt, neg_cnt, node_thr_cnt);
-		return 1;
-	}
-
-	return 0;
-}
-
-static void check_calibration(struct atmel_ts_data*ts)
-{
-	uint8_t data[T37_DATA + T37_TCH_FLAG_SIZE];
-	uint8_t loop_i, loop_j, x_limit = 0, check_mask, tch_ch = 0, atch_ch = 0;
-
-	memset(data, 0xFF, sizeof(data));
-	i2c_atmel_write_byte_data(ts->client,
-		get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-		T6_CFG_DIAG, T6_CFG_DIAG_CMD_TCH);
-
-	for (loop_i = 0;
-		!(data[T37_MODE] == T6_CFG_DIAG_CMD_TCH && data[T37_PAGE] == T37_PAGE_NUM0) && loop_i < 10; loop_i++) {
-		msleep(5);
-		i2c_atmel_read(ts->client,
-			get_object_address(ts, DIAGNOSTIC_T37), data, 2);
-	}
-
-	if (loop_i == 10)
-		printk(KERN_ERR "%s: Diag data not ready\n", __func__);
-
-	i2c_atmel_read(ts->client, get_object_address(ts, DIAGNOSTIC_T37), data,
-		T37_DATA + T37_TCH_FLAG_SIZE);
-	if (data[T37_MODE] == T6_CFG_DIAG_CMD_TCH &&
-		data[T37_PAGE] == T37_PAGE_NUM0) {
-		x_limit = T28_CFG_MODE0_X + ts->config_setting[NONE].config_T28[T28_CFG_MODE];
-		x_limit = x_limit << 1;
-		if (x_limit <= 40) {
-			for (loop_i = 0; loop_i < x_limit; loop_i += 2) {
-				for (loop_j = 0; loop_j < BITS_PER_BYTE; loop_j++) {
-					check_mask = BIT_MASK(loop_j);
-					if (data[T37_DATA + T37_TCH_FLAG_IDX + loop_i] &
-						check_mask)
-						tch_ch++;
-					if (data[T37_DATA + T37_TCH_FLAG_IDX + loop_i + 1] &
-						check_mask)
-						tch_ch++;
-					if (data[T37_DATA + T37_ATCH_FLAG_IDX + loop_i] &
-						check_mask)
-						atch_ch++;
-					if (data[T37_DATA + T37_ATCH_FLAG_IDX + loop_i + 1] &
-						check_mask)
-						atch_ch++;
-				}
-			}
-		}
-	}
-	i2c_atmel_write_byte_data(ts->client,
-		get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-		T6_CFG_DIAG, T6_CFG_DIAG_CMD_PAGEUP);
-
-	if (tch_ch && (atch_ch == 0)) {
-		if (jiffies > (ts->timestamp + HZ/2) && (ts->calibration_confirm == 1)) {
-			ts->calibration_confirm = 2;
-			printk(KERN_INFO "%s: calibration confirm\n", __func__);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) + T8_CFG_ATCHCALST,
-				ts->config_setting[ts->status].config_T8[T8_CFG_ATCHCALST]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALSTHR,
-				ts->config_setting[ts->status].config_T8[T8_CFG_ATCHCALSTHR]);
-		}
-		if (ts->calibration_confirm < 2)
-			ts->calibration_confirm = 1;
-		ts->timestamp = jiffies;
-	} else if ((tch_ch - 25) <= atch_ch && (tch_ch || atch_ch)) {
-		ts->calibration_confirm = 0;
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-			T6_CFG_CALIBRATE, 0x55);
-	}
-}
-
-static void restore_normal_threshold(struct atmel_ts_data *ts)
+static void restore_normal_tchthr(struct atmel_ts_data *ts)
 {
 	if (ts->call_tchthr[0]) {
-		if (ts->wlc_status && ts->wlc_config[0])
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-				T9_CFG_TCHTHR,
-				ts->wlc_config[WLC_TCHTHR]);
-		else if (ts->config_setting[ts->status].config[0])
+		if (ts->config_setting[ts->status].config[0])
 			i2c_atmel_write_byte_data(ts->client,
 				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
 				T9_CFG_TCHTHR,
@@ -830,16 +624,9 @@ static void restore_normal_threshold(struct atmel_ts_data *ts)
 			T8_CFG_ATCHCALSTHR,
 			ts->config_setting[ts->status].config_T8[T8_CFG_ATCHCALSTHR]);
 	}
-	if (ts->locking_config[0]) {
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-			T9_CFG_MRGTHR,
-			ts->config_setting[NONE].config_T9[T9_CFG_MRGTHR]);
-	}
 }
 
-static void confirm_calibration(struct atmel_ts_data *ts,
-		uint8_t recal, uint8_t reason)
+static void confirm_calibration(struct atmel_ts_data *ts, int recal)
 {
 	uint8_t ATCH_NOR[4] = {0, 1, 0, 0};
 
@@ -851,12 +638,8 @@ static void confirm_calibration(struct atmel_ts_data *ts,
 		i2c_atmel_write_byte_data(ts->client,
 			get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
 			T6_CFG_CALIBRATE, 0x55);
-	printk(KERN_INFO "Touch: calibration confirm %sby %s\n",
-		recal ? "with recal " : "",
-		(reason == 0) ? "position" :
-		(reason == 1) ? "clicks" :
-		(reason == 2) ? "delta" :
-		(reason == 3) ? "suspend" : "unknown");
+	printk(KERN_INFO "Touch: calibration confirm %s\n",
+		recal ? "with recal" : "");
 }
 
 static void msg_process_finger_data(struct atmel_ts_data *ts,
@@ -876,9 +659,6 @@ static void msg_process_finger_data(struct atmel_ts_data *ts,
 
 static void msg_process_multitouch(struct atmel_ts_data *ts, uint8_t *data, uint8_t idx)
 {
-	if (ts->calibration_confirm < 2 && ts->id->version == 0x16)
-		check_calibration(ts);
-
 	msg_process_finger_data(ts, &ts->finger_data[idx], data);
 	if (data[T9_MSG_STATUS] & T9_MSG_STATUS_RELEASE) {
 		if (ts->finger_pressed & BIT(idx)) {
@@ -903,23 +683,20 @@ static void msg_process_multitouch(struct atmel_ts_data *ts, uint8_t *data, uint
 				printk(KERN_INFO "E%d@%d,%d\n",
 					idx + 1, ts->finger_data[idx].x, ts->finger_data[idx].y);
 			}
-			if (ts->id->version >= 0x20 && ts->pre_data[0] < RECALIB_DONE) {
+			if (ts->pre_data[0] < RECALIB_DONE) {
 				if (ts->finger_count == 0) {
 					if (ts->pre_data[0] == RECALIB_NEED &&
 						!ts->unlock_attr && idx == 0 &&
 						ts->finger_data[idx].y > 750 &&
 						ts->finger_data[idx].y - ts->pre_data[idx+1] > 135) {
-							restore_normal_threshold(ts);
-							confirm_calibration(ts, 1, 0);
+							restore_normal_tchthr(ts);
+							confirm_calibration(ts, 1);
 					} else if (ts->pre_data[0] == RECALIB_UNLOCK &&
 						ts->unlock_attr && idx == 0 &&
-						time_after(jiffies, ts->valid_press_timeout)) {
+						time_after(jiffies, ts->timeout)) {
 						ts->valid_pressed_cnt++;
-						if (ts->valid_pressed_cnt > 2) {
-							cancel_delayed_work_sync(&ts->unlock_work);
-							if (ts->pre_data[0] == RECALIB_UNLOCK)
-								confirm_calibration(ts, 0, 1);
-						}
+						if (ts->valid_pressed_cnt > 2)
+							confirm_calibration(ts, 0);
 					} else if (ts->pre_data[0] == RECALIB_NG)
 						ts->pre_data[0] = RECALIB_NEED;
 				} else {
@@ -953,7 +730,7 @@ static void msg_process_multitouch(struct atmel_ts_data *ts, uint8_t *data, uint
 			else
 				ts->finger_count++;
 			ts->finger_pressed |= BIT(idx);
-			if (ts->id->version >= 0x20 && ts->pre_data[0] < RECALIB_DONE) {
+			if (ts->pre_data[0] < RECALIB_DONE) {
 				if (ts->pre_data[0] < RECALIB_UNLOCK) {
 					ts->pre_data[idx + 1] = ts->finger_data[idx].y;
 					if (ts->finger_count == ts->finger_support)
@@ -971,92 +748,11 @@ static void msg_process_multitouch(struct atmel_ts_data *ts, uint8_t *data, uint
 	}
 }
 
-static void msg_process_multitouch_legacy(struct atmel_ts_data *ts, uint8_t *data, uint8_t idx)
-{
-	/* for issue debug only */
-	if ((data[T9_MSG_STATUS] & (T9_MSG_STATUS_PRESS|T9_MSG_STATUS_RELEASE)) ==
-		(T9_MSG_STATUS_PRESS|T9_MSG_STATUS_RELEASE))
-		printk(KERN_INFO "x60 ISSUE happened: %x, %x, %x, %x, %x, %x, %x\n",
-			data[0], data[1], data[2], data[3], data[4], data[5], data[6]);
-
-	msg_process_finger_data(ts, &ts->finger_data[idx], data);
-	if ((data[T9_MSG_STATUS] & T9_MSG_STATUS_RELEASE) &&
-		(ts->finger_pressed & BIT(idx))) {
-		if (data[T9_MSG_STATUS] & T9_MSG_STATUS_MOVE) {
-			multi_input_report(ts);
-#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
-			input_sync(ts->input_dev);
-#endif
-		}
-		ts->finger_count--;
-		ts->finger_pressed &= ~BIT(idx);
-	} else if ((data[T9_MSG_STATUS] & (T9_MSG_STATUS_DETECT|T9_MSG_STATUS_PRESS)) &&
-		!(ts->finger_pressed & BIT(idx))) {
-		ts->finger_count++;
-		ts->finger_pressed |= BIT(idx);
-	}
-}
-
 static void msg_process_noisesuppression(struct atmel_ts_data *ts, uint8_t *data)
 {
-	uint8_t loop_i;
-
-	if (ts->status == CONNECTED && data[T22_MSG_GCAFDEPTH] >= ts->GCAF_sample) {
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_POWERCONFIG_T7) +
-			T7_CFG_IDLEACQINT, 0x08);
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_POWERCONFIG_T7) +
-			T7_CFG_ACTVACQINT, 0x08);
-		for (loop_i = 0; loop_i < 5; loop_i++) {
-			if (ts->GCAF_sample < ts->GCAF_level[loop_i]) {
-				ts->GCAF_sample = ts->GCAF_level[loop_i];
-				break;
-			}
-		}
-		if (loop_i == 5)
-			ts->GCAF_sample += 24;
-		if (ts->GCAF_sample >= 63) {
-			ts->GCAF_sample = 63;
-			if (ts->noise_config[0]) {
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-					T9_CFG_TCHTHR, ts->noise_config[NC_TCHTHR]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-					T9_CFG_TCHDI, ts->noise_config[NC_TCHDI]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_NOISETHR, ts->noise_config[NC_NOISETHR]);
-			} else {
-				if (ts->config_setting[CONNECTED].config[0])
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_NOISETHR, ts->config_setting[CONNECTED].config[CB_NOISETHR]);
-				else
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_NOISETHR, ts->config_setting[CONNECTED].config_T22[T22_CFG_NOISETHR]);
-			}
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALSTHR, 0x1);
-		}
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, SPT_CTECONFIG_T28) +
-			T28_CFG_ACTVGCAFDEPTH, ts->GCAF_sample);
-	}
-	if (data[T22_MSG_STATUS] & (T22_MSG_STATUS_FHERR|T22_MSG_STATUS_GCAFERR) &&
-		ts->GCAF_sample == 63) {
-		ts->noisethr_config += 3;
-		if (ts->noisethr && ts->noisethr_config > ts->noisethr)
-			ts->noisethr_config = ts->noisethr;
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-			T22_CFG_NOISETHR, ts->noisethr_config);
-	}
 }
 
+#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
 static void compatible_input_report(struct input_dev *idev,
 				struct atmel_finger_data *fdata, uint8_t press, uint8_t last)
 {
@@ -1070,8 +766,7 @@ static void compatible_input_report(struct input_dev *idev,
 		input_mt_sync(idev);
 	}
 }
-
-#ifndef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
+#else
 static void htc_input_report(struct input_dev *idev,
 				struct atmel_finger_data *fdata, uint8_t press, uint8_t last)
 {
@@ -1092,18 +787,13 @@ static void multi_input_report(struct atmel_ts_data *ts)
 
 	for (loop_i = 0; loop_i < ts->finger_support; loop_i++) {
 		if (ts->finger_pressed & BIT(loop_i)) {
-			if (ts->id->version >= 0x15) {
 #ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
-				compatible_input_report(ts->input_dev, &ts->finger_data[loop_i],
-					1, (ts->finger_count == ++finger_report));
+			compatible_input_report(ts->input_dev, &ts->finger_data[loop_i],
+				1, (ts->finger_count == ++finger_report));
 #else
-				htc_input_report(ts->input_dev, &ts->finger_data[loop_i],
-					1, (ts->finger_count == ++finger_report));
+			htc_input_report(ts->input_dev, &ts->finger_data[loop_i],
+				1, (ts->finger_count == ++finger_report));
 #endif
-			} else {
-				compatible_input_report(ts->input_dev, &ts->finger_data[loop_i],
-					1, (ts->finger_count == ++finger_report));
-			}
 			if (ts->debug_log_level & 0x2)
 				printk(KERN_INFO "Finger %d=> X:%d, Y:%d w:%d, z:%d, F:%d\n",
 					loop_i + 1,
@@ -1133,150 +823,55 @@ static void atmel_ts_work_func(struct work_struct *work)
 		printk("\n");
 	}
 
-	if (ts->id->version >= 0x15) {
-		report_type = data[MSG_RID] - ts->finger_type;
-		if (report_type >= 0 && report_type < ts->finger_support) {
-			msg_process_multitouch(ts, data, report_type);
-		} else {
-			if (data[MSG_RID] == get_rid(ts, GEN_COMMANDPROCESSOR_T6)) {
-				if ((data[T6_MSG_STATUS] & T6_MSG_STATUS_CAL) &&
-					ts->unlock_attr) {
-					if (ts->pre_data[0] == RECALIB_UNLOCK) {
-						ts->valid_pressed_cnt = 0;
-						ts->cal_after_unlock = 1;
-						ts->valid_press_timeout = jiffies +
-							msecs_to_jiffies(15 + ts->finger_count * 5);
-					} else if (ts->pre_data[0] < RECALIB_UNLOCK) {
-						ts->safe_unlock_timeout = jiffies +
-							msecs_to_jiffies(SAFE_TIMEOUT);
-					}
-				}
-				printk(KERN_INFO "Touch Status: ");
-				msg_byte_num = 5;
-			} else if (data[MSG_RID] == get_rid(ts, PROCI_GRIPFACESUPPRESSION_T20)) {
-				if (ts->calibration_confirm < 2 && ts->id->version == 0x16)
-					check_calibration(ts);
-				ts->face_suppression = data[T20_MSG_STATUS];
-				printk(KERN_INFO "Touch Face suppression %s: ",
-					ts->face_suppression ? "Active" : "Inactive");
-				msg_byte_num = 2;
-			} else if (data[MSG_RID] == get_rid(ts, PROCG_NOISESUPPRESSION_T22)) {
-				if (data[T22_MSG_STATUS] == T22_MSG_STATUS_GCAFCHG) /* reduce message print */
-					msg_byte_num = 0;
-				else {
-					printk(KERN_INFO "Touch Noise suppression: ");
-					msg_byte_num = 4;
-					msg_process_noisesuppression(ts, data);
-				}
-			} else
-				printk(KERN_INFO "Touch Unhandled: ");
-
-			if (data[MSG_RID] != 0xFF) {
-				for (loop_j = 0; loop_j < msg_byte_num; loop_j++)
-					printk("0x%2.2X ", data[loop_j]);
-				if (msg_byte_num)
-					printk("\n");
+	report_type = data[MSG_RID] - ts->finger_type;
+	if (report_type >= 0 && report_type < ts->finger_support) {
+		msg_process_multitouch(ts, data, report_type);
+	} else {
+		if (data[MSG_RID] == get_rid(ts, GEN_COMMANDPROCESSOR_T6)) {
+			if (data[T6_MSG_STATUS] & T6_MSG_STATUS_CAL &&
+				ts->pre_data[0] == RECALIB_UNLOCK && ts->unlock_attr) {
+				ts->valid_pressed_cnt = 0;
+				ts->timeout = jiffies +
+					msecs_to_jiffies(15 + ts->finger_count * 5);
 			}
-		}
-		if (!ts->finger_count || ts->face_suppression) {
-			ts->finger_pressed = 0;
-			ts->finger_count = 0;
-#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
-			compatible_input_report(ts->input_dev, NULL, 0, 1);
-#else
-			htc_input_report(ts->input_dev, NULL, 0, 1);
-#endif
-			if (ts->debug_log_level & 0x2)
-				printk(KERN_INFO "Finger leave\n");
-		} else {
-			multi_input_report(ts);
-		}
-#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
-		input_sync(ts->input_dev);
-#endif
-	} else { /*read one message one time */
-		report_type = data[MSG_RID] - ts->finger_type;
-		if (report_type >= 0 && report_type < ts->finger_support) {
-			msg_process_multitouch_legacy(ts, data, report_type);
-			if (!ts->finger_count) {
-				ts->finger_pressed = 0;
-				compatible_input_report(ts->input_dev, NULL, 0, 1);
-				if (ts->debug_log_level & 0x2)
-					printk(KERN_INFO "Finger leave\n");
-			} else {
-				multi_input_report(ts);
-			}
-			input_sync(ts->input_dev);
+			printk(KERN_INFO "Touch Status: ");
+			msg_byte_num = 5;
+		} else if (data[MSG_RID] == get_rid(ts, PROCI_TOUCHSUPPRESSION_T42)) {
+			ts->face_suppression = data[T42_MSG_STATUS];
+			printk(KERN_INFO "Touch suppression %s: ",
+				ts->face_suppression ? "Active" : "Inactive");
+			msg_byte_num = 2;
+		} else if (data[MSG_RID] == get_rid(ts, PROCG_NOISESUPPRESSION_T48)) {
+			printk(KERN_INFO "Touch Noise suppression: ");
+			msg_byte_num = 5;
+			msg_process_noisesuppression(ts, data);
 		} else
-			printk(KERN_INFO"RAW data: %x, %x, %x, %x, %x, %x, %x\n",
-				data[0], data[1], data[2], data[3], data[4], data[5], data[6]);
+			printk(KERN_INFO "Touch Unhandled: ");
+
+		if (data[MSG_RID] != 0xFF) {
+			for (loop_j = 0; loop_j < msg_byte_num; loop_j++)
+				printk("0x%2.2X ", data[loop_j]);
+			if (msg_byte_num)
+				printk("\n");
+		}
 	}
+	if (!ts->finger_count || ts->face_suppression) {
+		ts->finger_pressed = 0;
+		ts->finger_count = 0;
+#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
+		compatible_input_report(ts->input_dev, NULL, 0, 1);
+#else
+		htc_input_report(ts->input_dev, NULL, 0, 1);
+#endif
+		if (ts->debug_log_level & 0x2)
+			printk(KERN_INFO "Finger leave\n");
+	} else {
+		multi_input_report(ts);
+	}
+#ifdef CONFIG_TOUCHSCREEN_COMPATIBLE_REPORT
+	input_sync(ts->input_dev);
+#endif
 	enable_irq(ts->client->irq);
-}
-
-static void atmel_ts_check_delta_work_func(struct work_struct *work)
-{
-	struct atmel_ts_data *ts;
-	uint8_t delta = 0;
-
-	ts = container_of(work, struct atmel_ts_data, check_delta_work);
-
-	i2c_atmel_read(ts->client, get_object_address(ts,
-		TOUCH_MULTITOUCHSCREEN_T9) + T9_CFG_TCHTHR, &delta, 1);
-	delta = (delta >> 2) << 3;
-	if (ts->id->version >= 0x20 && check_delta_full(ts, delta, 50, 1)) {
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-			T8_CFG_ATCHCALST, ts->ATCH_EXT[0]);
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-			T8_CFG_ATCHCALSTHR, ts->ATCH_EXT[1]);
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-			T8_CFG_ATCHFRCCALTHR, 16);
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-			T8_CFG_ATCHFRCCALRATIO, 240);
-		msleep(1);
-		i2c_atmel_write_byte_data(ts->client,
-			get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-			T6_CFG_CALIBRATE, 0x55);
-	}
-}
-
-static void atmel_ts_unlock_work_func(struct work_struct *work)
-{
-	struct atmel_ts_data *ts;
-	uint8_t delta = 0;
-	int ret;
-
-	ts = container_of(work, struct atmel_ts_data, unlock_work.work);
-	if (ts->pre_data[0] != RECALIB_UNLOCK || ts->cal_after_unlock)
-		goto give_up;
-	else {
-		if (ts->finger_count)
-			ret = 1;
-		else {
-			i2c_atmel_read(ts->client, get_object_address(ts,
-				TOUCH_MULTITOUCHSCREEN_T9) + T9_CFG_TCHTHR, &delta, 1);
-			delta = (delta >> 2) << 3;
-			ret = check_delta_full(ts, delta, 2, 0);
-		}
-		if (ts->pre_data[0] != RECALIB_UNLOCK || ts->cal_after_unlock)
-			goto give_up;
-		else {
-			if (ret == 0)
-				confirm_calibration(ts, 0, 2);
-			else /* retry, schedule next work */
-				queue_delayed_work(ts->atmel_delayed_wq, &ts->unlock_work,
-					msecs_to_jiffies(ATCHCAL_DELAY));
-		}
-	}
-
-	return;
-
-give_up:
-	printk(KERN_INFO "Touch: give up delta check\n");
 }
 
 static irqreturn_t atmel_ts_irq_handler(int irq, void *dev_id)
@@ -1307,246 +902,16 @@ static int psensor_tp_status_handler_func(struct notifier_block *this,
 	return NOTIFY_OK;
 }
 
-static int wlc_tp_status_handler_func(struct notifier_block *this,
-	unsigned long connect_status, void *unused)
-{
-	struct atmel_ts_data *ts;
-	int wlc_status;
-
-	wlc_status = connect_status ? CONNECTED : NONE;
-	printk(KERN_INFO "Touch: wireless charger %d\n", wlc_status);
-
-	ts = private_ts;
-	if (ts->status)
-		printk(KERN_ERR "Touch: ambigurous wireless charger state\n");
-
-	if (wlc_status != ts->wlc_status) {
-		ts->wlc_status = wlc_status ? CONNECTED : NONE;
-		if (!ts->status && ts->wlc_config[0]) {
-			if (ts->wlc_status) {
-				if (ts->wlc_freq[1])
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_FREQ,
-						ts->wlc_freq, 5);
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, GEN_POWERCONFIG_T7),
-					ts->wlc_config,
-					get_object_size(ts, GEN_POWERCONFIG_T7));
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-					T9_CFG_TCHTHR,
-					ts->wlc_config[WLC_TCHTHR]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_NOISETHR,
-					ts->wlc_config[WLC_NOISETHR]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_IDLEGCAFDEPTH,
-					ts->wlc_config[WLC_IDLEGCAFDEPTH]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_ACTVGCAFDEPTH,
-					ts->wlc_config[WLC_ACTVGCAFDEPTH]);
-			} else {
-				if (ts->wlc_freq[1])
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_FREQ,
-						ts->config_setting[NONE].config_T22 + T22_CFG_FREQ, 5);
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, GEN_POWERCONFIG_T7),
-					ts->config_setting[NONE].config_T7,
-					get_object_size(ts, GEN_POWERCONFIG_T7));
-				if (ts->config_setting[CONNECTED].config[0]) {
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-						T9_CFG_TCHTHR,
-						ts->config_setting[NONE].config[CB_TCHTHR]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_NOISETHR,
-						ts->config_setting[NONE].config[CB_NOISETHR]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, SPT_CTECONFIG_T28) +
-						T28_CFG_IDLEGCAFDEPTH,
-						ts->config_setting[NONE].config[CB_IDLEGCAFDEPTH]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, SPT_CTECONFIG_T28) +
-						T28_CFG_ACTVGCAFDEPTH,
-						ts->config_setting[NONE].config[CB_ACTVGCAFDEPTH]);
-				} else {
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-						T9_CFG_TCHTHR,
-						ts->config_setting[NONE].config_T9[T9_CFG_TCHTHR]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_NOISETHR,
-						ts->config_setting[NONE].config_T22[T22_CFG_NOISETHR]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, SPT_CTECONFIG_T28) +
-						T28_CFG_IDLEGCAFDEPTH,
-						ts->config_setting[NONE].config_T28[T28_CFG_IDLEGCAFDEPTH]);
-					i2c_atmel_write_byte_data(ts->client,
-						get_object_address(ts, SPT_CTECONFIG_T28) +
-						T28_CFG_ACTVGCAFDEPTH,
-						ts->config_setting[NONE].config_T28[T28_CFG_ACTVGCAFDEPTH]);
-				}
-			}
-		}
-		regdump_to_kernel();
-	}
-
-	return NOTIFY_OK;
-}
-
 static void cable_tp_status_handler_func(int connect_status)
 {
 	struct atmel_ts_data *ts;
 
 	ts = private_ts;
 
-#if defined(CONFIG_ARCH_MSM8X60)
-	if (connect_status == 4 || (connect_status == 0 && ts->wlc_status)) {
-		wlc_tp_status_handler_func(NULL, connect_status == 4 ? 1 : 0, NULL);
-		return;
-	}
-#endif
-
 	printk(KERN_INFO "Touch: cable change to %d\n", connect_status);
 
 	if (connect_status != ts->status) {
 		ts->status = connect_status ? CONNECTED : NONE;
-		if (!ts->status && ts->wlc_status)
-			printk(KERN_ERR "Touch: ambigurous wireless charger state\n");
-		if (ts->config_setting[CONNECTED].config[0]) {
-			if (ts->status && ts->wlc_status) {
-				if (ts->wlc_freq[1])
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_FREQ,
-						ts->config_setting[NONE].config_T22 + T22_CFG_FREQ, 5);
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, GEN_POWERCONFIG_T7),
-					ts->config_setting[CONNECTED].config_T7,
-					get_object_size(ts, GEN_POWERCONFIG_T7));
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_NOISETHR,
-					ts->config_setting[NONE].config[CB_NOISETHR]);
-				ts->noisethr_config =
-					ts->config_setting[CONNECTED].config[CB_NOISETHR];
-
-				printk(KERN_INFO "Touch: cable %s overrides wireless charger\n",
-					ts->status ? "in" : "out");
-				ts->wlc_status = NONE;
-			}
-			if (ts->status == CONNECTED && ts->id->version < 0x20) {
-				ts->calibration_confirm = 2;
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-					T8_CFG_ATCHCALST,
-					ts->config_setting[ts->status].config_T8[T8_CFG_ATCHCALST]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-					T8_CFG_ATCHCALSTHR ,
-					ts->config_setting[ts->status].config_T8[T8_CFG_ATCHCALSTHR]);
-			}
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-				T9_CFG_TCHTHR,
-				ts->config_setting[ts->status].config[CB_TCHTHR]);
-			if (ts->status == NONE) {
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_NOISETHR,
-					ts->config_setting[NONE].config[CB_NOISETHR]);
-				ts->noisethr_config =
-					ts->config_setting[CONNECTED].config[CB_NOISETHR];
-			}
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, SPT_CTECONFIG_T28) +
-				T28_CFG_IDLEGCAFDEPTH,
-				ts->config_setting[ts->status].config[CB_IDLEGCAFDEPTH]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, SPT_CTECONFIG_T28) +
-				T28_CFG_ACTVGCAFDEPTH,
-				ts->config_setting[ts->status].config[CB_ACTVGCAFDEPTH]);
-			ts->GCAF_sample =
-				ts->config_setting[CONNECTED].config[CB_ACTVGCAFDEPTH];
-		} else {
-			if (ts->config_setting[CONNECTED].config_T7 != NULL)
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, GEN_POWERCONFIG_T7),
-					ts->config_setting[ts->status].config_T7,
-					get_object_size(ts, GEN_POWERCONFIG_T7));
-			else if (ts->wlc_status) {
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, GEN_POWERCONFIG_T7),
-					ts->config_setting[NONE].config_T7,
-					get_object_size(ts, GEN_POWERCONFIG_T7));
-			}
-			if (ts->config_setting[CONNECTED].config_T8 != NULL) {
-				if (ts->pre_data[0] == RECALIB_DONE && ts->id->version >= 0x20)
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, GEN_ACQUISITIONCONFIG_T8),
-						ts->config_setting[CONNECTED].config_T8,
-						get_object_size(ts, GEN_ACQUISITIONCONFIG_T8) - 4);
-				else
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, GEN_ACQUISITIONCONFIG_T8),
-						ts->config_setting[CONNECTED].config_T8,
-						get_object_size(ts, GEN_ACQUISITIONCONFIG_T8));
-			}
-			if (ts->config_setting[ts->status].config_T9 != NULL) {
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9),
-					ts->config_setting[ts->status].config_T9,
-					get_object_size(ts, TOUCH_MULTITOUCHSCREEN_T9));
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22),
-					ts->config_setting[ts->status].config_T22,
-					get_object_size(ts, PROCG_NOISESUPPRESSION_T22));
-				ts->noisethr_config =
-					ts->config_setting[ts->status].config_T22[8];
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28),
-					ts->config_setting[ts->status].config_T28,
-					get_object_size(ts, SPT_CTECONFIG_T28));
-				ts->GCAF_sample =
-					ts->config_setting[ts->status].config_T28[T28_CFG_ACTVGCAFDEPTH];
-			} else if (ts->wlc_status) {
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-					T9_CFG_TCHTHR,
-					ts->config_setting[NONE].config_T9[T9_CFG_TCHTHR]);
-				if (ts->wlc_freq[1])
-					i2c_atmel_write(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-						T22_CFG_FREQ,
-						ts->config_setting[NONE].config_T22 + T22_CFG_FREQ, 5);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_NOISETHR,
-					ts->config_setting[NONE].config_T22[T22_CFG_NOISETHR]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_IDLEGCAFDEPTH,
-					ts->config_setting[NONE].config_T28[T28_CFG_IDLEGCAFDEPTH]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_ACTVGCAFDEPTH,
-					ts->config_setting[NONE].config_T28[T28_CFG_ACTVGCAFDEPTH]);
-			}
-
-			if (ts->wlc_status) {
-				printk(KERN_INFO "Touch: cable %s overrides wireless charger\n",
-					ts->status ? "in" : "out");
-				ts->wlc_status = NONE;
-			}
-		}
 		regdump_to_kernel();
 	}
 }
@@ -1592,10 +957,6 @@ static struct t_usb_status_notifier cable_status_handler = {
 	.name = "usb_tp_connected",
 	.func = cable_tp_status_handler_func,
 };
-
-static struct notifier_block wlc_status_handler = {
-	.notifier_call = wlc_tp_status_handler_func,
-};
 #else
 static struct t_cable_status_notifier cable_status_handler = {
     .name = "usb_tp_connected",
@@ -1607,7 +968,7 @@ static struct notifier_block psensor_status_handler = {
 	.notifier_call = psensor_tp_status_handler_func,
 };
 
-static int atmel_ts_probe(struct i2c_client *client,
+static int atmel_224e_ts_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct atmel_ts_data *ts;
@@ -1620,8 +981,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 #if defined(CONFIG_ARCH_MSM8X60)
 	int cable_connect_type = 0;
 #endif
-	uint16_t x_range;
-	uint16_t y_range;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		printk(KERN_ERR "TOUCH_ERR: need I2C_FUNC_I2C\n");
@@ -1638,21 +997,12 @@ static int atmel_ts_probe(struct i2c_client *client,
 
 	ts->atmel_wq = create_singlethread_workqueue("atmel_wq");
 	if (!ts->atmel_wq) {
-		printk(KERN_ERR "TOUCH_ERR: create workqueue atmel_wq failed\n");
+		printk(KERN_ERR "TOUCH_ERR: create workqueue failed\n");
 		ret = -ENOMEM;
-		goto err_create_atmel_wq_failed;
-	}
-
-	ts->atmel_delayed_wq = create_singlethread_workqueue("atmel_delayed_wq");
-	if (!ts->atmel_delayed_wq) {
-		printk(KERN_ERR "TOUCH_ERR: create workqueue atmel_delayed_wq failed\n");
-		ret = -ENOMEM;
-		goto err_create_atmel_delayed_wq_failed;
+		goto err_cread_wq_failed;
 	}
 
 	INIT_WORK(&ts->work, atmel_ts_work_func);
-	INIT_WORK(&ts->check_delta_work, atmel_ts_check_delta_work_func);
-	INIT_DELAYED_WORK(&ts->unlock_work, atmel_ts_unlock_work_func);
 	ts->client = client;
 	i2c_set_clientdata(client, ts);
 	pdata = client->dev.platform_data;
@@ -1722,10 +1072,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 	ts->id->family_id = data[INFO_BLK_FID];
 	ts->id->variant_id = data[INFO_BLK_VID];
 	ts->id->version = data[INFO_BLK_VER];
-	if (ts->id->family_id == 0x80 && ts->id->variant_id == 0x10) {
-		if (ts->id->version == 0x10)
-			ts->id->version += 6;
-	}
 	ts->id->build = data[INFO_BLK_BUILD];
 	ts->id->matrix_x_size = data[INFO_BLK_XSIZE];
 	ts->id->matrix_y_size = data[INFO_BLK_YSIZE];
@@ -1771,21 +1117,12 @@ static int atmel_ts_probe(struct i2c_client *client,
 		}
 
 		ts->finger_support = pdata->config_T9[T9_CFG_NUMTOUCH];
-		x_range = ((uint8_t)(pdata->config_T9[T9_CFG_XRANGE + 1]) << 8) +
-					(uint8_t)(pdata->config_T9[T9_CFG_XRANGE]);
-		y_range = ((uint8_t)(pdata->config_T9[T9_CFG_YRANGE + 1]) << 8) +
-					(uint8_t)(pdata->config_T9[T9_CFG_YRANGE]);
-		if ((pdata->config_T9[T9_CFG_ORIENT] & 0x1) == 0) {
-			if (x_range >= 1024)
-				ts->high_res_x_en = 1;
-			if (y_range >= 1024)
-				ts->high_res_y_en = 1;
-		} else { /* Switches the X and Y */
-			if (x_range >= 1024)
-				ts->high_res_y_en = 1;
-			if (y_range >= 1024)
-				ts->high_res_x_en = 1;
-		}
+		if (((pdata->config_T9[T9_CFG_XRANGE + 1] << 8) &
+			pdata->config_T9[T9_CFG_XRANGE]) >= 1024)
+			ts->high_res_x_en = 1;
+		if (((pdata->config_T9[T9_CFG_YRANGE + 1] << 8) &
+			pdata->config_T9[T9_CFG_YRANGE]) >= 1024)
+			ts->high_res_y_en = 1;
 		printk(KERN_INFO
 			"finger_type: %d, max finger: %d%s%s\n",
 			ts->finger_type, ts->finger_support,
@@ -1836,22 +1173,16 @@ static int atmel_ts_probe(struct i2c_client *client,
 		ts->abs_pressure_max = pdata->abs_pressure_max;
 		ts->abs_width_min = pdata->abs_width_min;
 		ts->abs_width_max = pdata->abs_width_max;
-		ts->GCAF_level = pdata->GCAF_level;
-		if (ts->id->version >= 0x20)
-			ts->ATCH_EXT = &pdata->config_T8[T8_CFG_ATCHCALST];
+		ts->ATCH_EXT = &pdata->config_T8[T8_CFG_ATCHCALST];
 		ts->filter_level = pdata->filter_level;
 		ts->unlock_attr = pdata->unlock_attr;
 
 #if !defined(CONFIG_ARCH_MSM8X60)
 		if (usb_get_connect_type())
 			ts->status = CONNECTED;
-		else if (htc_is_wireless_charger())
-			ts->wlc_status = CONNECTED;
 #else
 		cable_connect_type = cable_get_connect_type();
-		if (cable_connect_type == 4)
-			ts->wlc_status = CONNECTED;
-		else if (cable_connect_type != 0)
+		if (cable_connect_type != 0)
 			ts->status = CONNECTED;
 #endif
 
@@ -1862,16 +1193,8 @@ static int atmel_ts_probe(struct i2c_client *client,
 			= ts->config_setting[CONNECTED].config_T8
 			= pdata->config_T8;
 		ts->config_setting[NONE].config_T9 = pdata->config_T9;
-		ts->config_setting[NONE].config_T22 = pdata->config_T22;
-		ts->config_setting[NONE].config_T28 = pdata->config_T28;
-
-		if (pdata->wlc_config[0])
-			for (loop_i = 0; loop_i < 7; loop_i++)
-				ts->wlc_config[loop_i] = pdata->wlc_config[loop_i];
-
-		if (pdata->wlc_freq[1])
-			for (loop_i = 0; loop_i < 5; loop_i++)
-				ts->wlc_freq[loop_i] = pdata->wlc_freq[loop_i];
+		ts->config_setting[NONE].config_T48 = pdata->config_T48;
+		ts->config_setting[NONE].config_T46 = pdata->config_T46;
 
 		if (pdata->noise_config[0])
 			for (loop_i = 0; loop_i < 3; loop_i++)
@@ -1881,23 +1204,10 @@ static int atmel_ts_probe(struct i2c_client *client,
 			ts->config_setting[NONE].config[CB_TCHTHR] =
 				pdata->config_T9[T9_CFG_TCHTHR];
 			ts->config_setting[NONE].config[CB_NOISETHR] =
-				pdata->config_T22[T22_CFG_NOISETHR];
-			ts->config_setting[NONE].config[CB_IDLEGCAFDEPTH] =
-				pdata->config_T28[T28_CFG_IDLEGCAFDEPTH];
-			ts->config_setting[NONE].config[CB_ACTVGCAFDEPTH] =
-				pdata->config_T28[T28_CFG_ACTVGCAFDEPTH];
+				pdata->config_T48[T48_CFG_NLTHR];
 			for (loop_i = 0; loop_i < 4; loop_i++)
 				ts->config_setting[CONNECTED].config[loop_i] =
 					pdata->cable_config[loop_i];
-			ts->GCAF_sample =
-				ts->config_setting[CONNECTED].config[CB_ACTVGCAFDEPTH];
-			if (ts->id->version >= 0x20)
-				ts->noisethr = pdata->cable_config[CB_TCHTHR] -
-					pdata->config_T9[T9_CFG_TCHHYST];
-			else
-				ts->noisethr = pdata->cable_config[CB_TCHTHR];
-			ts->noisethr_config =
-				ts->config_setting[CONNECTED].config[CB_NOISETHR];
 		} else {
 			if (pdata->cable_config_T7[0])
 				ts->config_setting[CONNECTED].config_T7 =
@@ -1905,40 +1215,21 @@ static int atmel_ts_probe(struct i2c_client *client,
 			if (pdata->cable_config_T8[0])
 				ts->config_setting[CONNECTED].config_T8 =
 					pdata->cable_config_T8;
-			if (pdata->cable_config_T9[0]) {
+			if (pdata->cable_config_T9[0])
 				ts->config_setting[CONNECTED].config_T9 =
 					pdata->cable_config_T9;
-				ts->config_setting[CONNECTED].config_T22 =
-					pdata->cable_config_T22;
-				ts->config_setting[CONNECTED].config_T28 =
-					pdata->cable_config_T28;
-				ts->GCAF_sample =
-					ts->config_setting[CONNECTED].config_T28[T28_CFG_ACTVGCAFDEPTH];
-			}
-			if (ts->status == CONNECTED && pdata->cable_config_T9[0])
-				ts->noisethr = (ts->id->version >= 0x20) ?
-					pdata->cable_config_T9[T9_CFG_TCHTHR] - pdata->cable_config_T9[T9_CFG_TCHHYST] :
-					pdata->cable_config_T9[T9_CFG_TCHTHR];
-			else
-				ts->noisethr = (ts->id->version >= 0x20) ?
-					pdata->config_T9[T9_CFG_TCHTHR] - pdata->config_T9[T9_CFG_TCHHYST] :
-					pdata->config_T9[T9_CFG_TCHTHR];
-			ts->noisethr_config = pdata->cable_config_T22[T22_CFG_NOISETHR];
-
 		}
 
 		if (pdata->call_tchthr[0])
 			for (loop_i = 0; loop_i < 2; loop_i++)
 				ts->call_tchthr[loop_i] = pdata->call_tchthr[loop_i];
 
-		if (pdata->locking_config[0])
-			ts->locking_config[0] = pdata->locking_config[0];
-
 		if (!CRC_check) {
 			printk(KERN_INFO "Touch: Config reload\n");
 
-			i2c_atmel_write(ts->client, get_object_address(ts, SPT_CTECONFIG_T28),
-				pdata->config_T28, get_object_size(ts, SPT_CTECONFIG_T28));
+			i2c_atmel_write(ts->client,
+				get_object_address(ts, SPT_CTECONFIG_T46),
+				pdata->config_T46, get_object_size(ts, SPT_CTECONFIG_T46));
 
 			ret = i2c_atmel_write_byte_data(client,
 						get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
@@ -1979,34 +1270,33 @@ static int atmel_ts_probe(struct i2c_client *client,
 				pdata->config_T19,
 				get_object_size(ts, SPT_GPIOPWM_T19));
 			i2c_atmel_write(ts->client,
-				get_object_address(ts, PROCI_GRIPFACESUPPRESSION_T20),
-				pdata->config_T20,
-				get_object_size(ts, PROCI_GRIPFACESUPPRESSION_T20));
+				get_object_address(ts, PROCI_GRIPSUPPRESSION_T40),
+				pdata->config_T40,
+				get_object_size(ts, PROCI_GRIPSUPPRESSION_T40));
 			i2c_atmel_write(ts->client,
-				get_object_address(ts, PROCG_NOISESUPPRESSION_T22),
-				pdata->config_T22,
-				get_object_size(ts, PROCG_NOISESUPPRESSION_T22));
+				get_object_address(ts, PROCI_TOUCHSUPPRESSION_T42),
+				pdata->config_T42,
+				get_object_size(ts, PROCI_TOUCHSUPPRESSION_T42));
+			i2c_atmel_write(ts->client,
+				get_object_address(ts, PROCG_NOISESUPPRESSION_T48),
+				pdata->config_T48,
+				get_object_size(ts, PROCG_NOISESUPPRESSION_T48));
+			i2c_atmel_write(ts->client,
+				get_object_address(ts, PROCI_STYLUS_T47),
+				pdata->config_T47,
+				get_object_size(ts, PROCI_STYLUS_T47));
 			i2c_atmel_write(ts->client,
 				get_object_address(ts, TOUCH_PROXIMITY_T23),
 				pdata->config_T23,
 				get_object_size(ts, TOUCH_PROXIMITY_T23));
 			i2c_atmel_write(ts->client,
-				get_object_address(ts, PROCI_ONETOUCHGESTUREPROCESSOR_T24),
-				pdata->config_T24,
-				get_object_size(ts, PROCI_ONETOUCHGESTUREPROCESSOR_T24));
-			i2c_atmel_write(ts->client,
 				get_object_address(ts, SPT_SELFTEST_T25),
 				pdata->config_T25,
 				get_object_size(ts, SPT_SELFTEST_T25));
-			if (ts->id->version < 0x20)
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, PROCI_TWOTOUCHGESTUREPROCESSOR_T27),
-					pdata->config_T27,
-					get_object_size(ts, PROCI_TWOTOUCHGESTUREPROCESSOR_T27));
 			i2c_atmel_write(ts->client,
-				get_object_address(ts, SPT_CTECONFIG_T28),
-				pdata->config_T28,
-				get_object_size(ts, SPT_CTECONFIG_T28));
+				get_object_address(ts, SPT_CTECONFIG_T46),
+				pdata->config_T46,
+				get_object_size(ts, SPT_CTECONFIG_T46));
 
 			ret = i2c_atmel_write_byte_data(client,
 						get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
@@ -2038,14 +1328,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 					get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
 					T9_CFG_TCHTHR,
 					ts->config_setting[CONNECTED].config[CB_TCHTHR]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_IDLEGCAFDEPTH,
-					ts->config_setting[CONNECTED].config[CB_IDLEGCAFDEPTH]);
-				i2c_atmel_write_byte_data(ts->client,
-					get_object_address(ts, SPT_CTECONFIG_T28) +
-					T28_CFG_ACTVGCAFDEPTH,
-					ts->config_setting[CONNECTED].config[CB_ACTVGCAFDEPTH]);
 			} else {
 				if (ts->config_setting[CONNECTED].config_T7 != NULL)
 					i2c_atmel_write(ts->client,
@@ -2063,64 +1345,27 @@ static int atmel_ts_probe(struct i2c_client *client,
 						ts->config_setting[CONNECTED].config_T9,
 						get_object_size(ts, TOUCH_MULTITOUCHSCREEN_T9));
 					i2c_atmel_write(ts->client,
-						get_object_address(ts, PROCG_NOISESUPPRESSION_T22),
-						ts->config_setting[CONNECTED].config_T22,
-						get_object_size(ts, PROCG_NOISESUPPRESSION_T22));
+						get_object_address(ts, PROCG_NOISESUPPRESSION_T48),
+						ts->config_setting[CONNECTED].config_T48,
+						get_object_size(ts, PROCG_NOISESUPPRESSION_T48));
 					i2c_atmel_write(ts->client,
-						get_object_address(ts, SPT_CTECONFIG_T28),
-						ts->config_setting[CONNECTED].config_T28,
-						get_object_size(ts, SPT_CTECONFIG_T28));
+						get_object_address(ts, SPT_CTECONFIG_T46),
+						ts->config_setting[CONNECTED].config_T46,
+						get_object_size(ts, SPT_CTECONFIG_T46));
 				}
 			}
 			i2c_atmel_write_byte_data(ts->client,
 				get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
 				T6_CFG_CALIBRATE, 0x55);
-		} else if (ts->wlc_status == CONNECTED) {
-			printk(KERN_INFO "Touch: set wireless charger config\n");
-			if (ts->wlc_freq[1])
-				i2c_atmel_write(ts->client,
-					get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-					T22_CFG_FREQ,
-					ts->wlc_freq, 5);
-			i2c_atmel_write(ts->client,
-				get_object_address(ts, GEN_POWERCONFIG_T7),
-				ts->wlc_config,
-				get_object_size(ts, GEN_POWERCONFIG_T7));
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-				T9_CFG_TCHTHR,
-				ts->wlc_config[WLC_TCHTHR]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, PROCG_NOISESUPPRESSION_T22) +
-				T22_CFG_NOISETHR,
-				ts->wlc_config[WLC_NOISETHR]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, SPT_CTECONFIG_T28) +
-				T28_CFG_IDLEGCAFDEPTH,
-				ts->wlc_config[WLC_IDLEGCAFDEPTH]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, SPT_CTECONFIG_T28) +
-				T28_CFG_ACTVGCAFDEPTH,
-				ts->wlc_config[WLC_ACTVGCAFDEPTH]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-				T6_CFG_CALIBRATE, 0x55);
 		}
 
-		if (ts->id->version >= 0x20 && ts->call_tchthr[0]) {
+		if (ts->call_tchthr[0]) {
 			i2c_atmel_write_byte_data(ts->client,
 				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) + T9_CFG_TCHTHR,
 				ts->call_tchthr[ts->status]);
 			i2c_atmel_write_byte_data(ts->client,
 				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) + T8_CFG_ATCHCALSTHR,
 				ts->call_tchthr[ts->status] - 5);
-		}
-
-		if (ts->id->version >= 0x20 && ts->locking_config[0]) {
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-				T9_CFG_MRGTHR,
-				ts->locking_config[0]);
 		}
 	}
 	ts->input_dev = input_allocate_device();
@@ -2187,8 +1432,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 
 #if !defined(CONFIG_ARCH_MSM8X60)
 	usb_register_notifier(&cable_status_handler);
-	if (ts->wlc_config[0])
-		register_notifier_wireless_charger(&wlc_status_handler);
 #else
 	cable_detect_register_notifier(&cable_status_handler);
 #endif
@@ -2202,11 +1445,9 @@ err_input_register_device_failed:
 err_input_dev_alloc_failed:
 err_alloc_failed:
 err_detect_failed:
-	destroy_workqueue(ts->atmel_delayed_wq);
-err_create_atmel_delayed_wq_failed:
 	destroy_workqueue(ts->atmel_wq);
 
-err_create_atmel_wq_failed:
+err_cread_wq_failed:
 	kfree(ts);
 
 err_alloc_data_failed:
@@ -2215,7 +1456,7 @@ err_check_functionality_failed:
 	return ret;
 }
 
-static int atmel_ts_remove(struct i2c_client *client)
+static int atmel_224e_ts_remove(struct i2c_client *client)
 {
 	struct atmel_ts_data *ts = i2c_get_clientdata(client);
 
@@ -2226,7 +1467,6 @@ static int atmel_ts_remove(struct i2c_client *client)
 	unregister_early_suspend(&ts->early_suspend);
 	free_irq(client->irq, ts);
 
-	destroy_workqueue(ts->atmel_delayed_wq);
 	destroy_workqueue(ts->atmel_wq);
 	input_unregister_device(ts->input_dev);
 	kfree(ts);
@@ -2234,7 +1474,7 @@ static int atmel_ts_remove(struct i2c_client *client)
 	return 0;
 }
 
-static int atmel_ts_suspend(struct i2c_client *client, pm_message_t mesg)
+static int atmel_224e_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 {
 	int ret;
 	struct atmel_ts_data *ts = i2c_get_clientdata(client);
@@ -2243,10 +1483,6 @@ static int atmel_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 
 	disable_irq(client->irq);
 
-	cancel_delayed_work_sync(&ts->unlock_work);
-	if (ts->pre_data[0] == RECALIB_UNLOCK && ts->psensor_status)
-		confirm_calibration(ts, 0, 3);
-	cancel_work_sync(&ts->check_delta_work);
 	ret = cancel_work_sync(&ts->work);
 	if (ret)
 		enable_irq(client->irq);
@@ -2255,7 +1491,7 @@ static int atmel_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	ts->finger_count = 0;
 	ts->first_pressed = 0;
 
-	if (ts->id->version >= 0x20 && ts->psensor_status == 0) {
+	if (ts->psensor_status == 0) {
 		ts->pre_data[0] = RECALIB_NEED;
 		i2c_atmel_write(client,
 			get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) + T8_CFG_ATCHCALST,
@@ -2270,12 +1506,12 @@ static int atmel_ts_suspend(struct i2c_client *client, pm_message_t mesg)
 	return 0;
 }
 
-static int atmel_ts_resume(struct i2c_client *client)
+static int atmel_224e_ts_resume(struct i2c_client *client)
 {
 	struct atmel_ts_data *ts = i2c_get_clientdata(client);
 
-	if (ts->id->version >= 0x20 && ts->pre_data[0] == RECALIB_NEED) {
-		if (ts->call_tchthr[0] && ts->psensor_status == 2 && !ts->wlc_status) {
+	if (ts->pre_data[0] == RECALIB_NEED) {
+		if (ts->call_tchthr[0] && ts->psensor_status == 2) {
 			printk(KERN_INFO "Touch: raise touch threshold\n");
 			i2c_atmel_write_byte_data(ts->client,
 				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) + T9_CFG_TCHTHR,
@@ -2284,61 +1520,21 @@ static int atmel_ts_resume(struct i2c_client *client)
 				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) + T8_CFG_ATCHCALSTHR,
 				ts->call_tchthr[ts->status] - 5);
 		}
-		if (ts->locking_config[0]) {
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, TOUCH_MULTITOUCHSCREEN_T9) +
-				T9_CFG_MRGTHR,
-				ts->locking_config[0]);
-		}
 	}
 
-	if (!ts->status && ts->wlc_status && ts->wlc_config[0])
-		i2c_atmel_write(ts->client,
-			get_object_address(ts, GEN_POWERCONFIG_T7),
-			ts->wlc_config,
-			get_object_size(ts, GEN_POWERCONFIG_T7));
-	else
-		i2c_atmel_write(ts->client,
-			get_object_address(ts, GEN_POWERCONFIG_T7),
-			ts->config_setting[ts->status].config_T7,
-			get_object_size(ts, GEN_POWERCONFIG_T7));
+	i2c_atmel_write(ts->client,
+		get_object_address(ts, GEN_POWERCONFIG_T7),
+		ts->config_setting[ts->status].config_T7,
+		get_object_size(ts, GEN_POWERCONFIG_T7));
 
-	if (ts->id->version == 0x16) {
-		if (ts->config_setting[CONNECTED].config[0] && ts->status &&
-			!check_delta(ts)) {
-			ts->calibration_confirm = 2;
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALST,
-				ts->config_setting[CONNECTED].config_T8[T8_CFG_ATCHCALST]);
-			i2c_atmel_write_byte_data(ts->client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALSTHR,
-				ts->config_setting[CONNECTED].config_T8[T8_CFG_ATCHCALSTHR]);
-		} else {
-			ts->calibration_confirm = 0;
-			msleep(1);
-			i2c_atmel_write_byte_data(client,
-				get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-				T6_CFG_CALIBRATE, 0x55);
-			i2c_atmel_write_byte_data(client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALST, 0x0);
-			i2c_atmel_write_byte_data(client,
-				get_object_address(ts, GEN_ACQUISITIONCONFIG_T8) +
-				T8_CFG_ATCHCALSTHR, 0x0);
-		}
+	if (ts->pre_data[0] != RECALIB_NEED) {
+		printk(KERN_INFO "Touch: resume in call, psensor status %d\n",
+			ts->psensor_status);
 	} else {
-		if (ts->pre_data[0] != RECALIB_NEED) {
-			printk(KERN_INFO "Touch: resume in call, psensor status %d\n",
-				ts->psensor_status);
-			queue_work(ts->atmel_wq, &ts->check_delta_work);
-		} else {
-			msleep(1);
-			i2c_atmel_write_byte_data(client,
-				get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
-				T6_CFG_CALIBRATE, 0x55);
-		}
+		msleep(1);
+		i2c_atmel_write_byte_data(client,
+			get_object_address(ts, GEN_COMMANDPROCESSOR_T6) +
+			T6_CFG_CALIBRATE, 0x55);
 	}
 	enable_irq(client->irq);
 
@@ -2350,51 +1546,49 @@ static void atmel_ts_early_suspend(struct early_suspend *h)
 {
 	struct atmel_ts_data *ts;
 	ts = container_of(h, struct atmel_ts_data, early_suspend);
-	atmel_ts_suspend(ts->client, PMSG_SUSPEND);
+	atmel_224e_ts_suspend(ts->client, PMSG_SUSPEND);
 }
 
 static void atmel_ts_late_resume(struct early_suspend *h)
 {
 	struct atmel_ts_data *ts;
 	ts = container_of(h, struct atmel_ts_data, early_suspend);
-	atmel_ts_resume(ts->client);
+	atmel_224e_ts_resume(ts->client);
 }
 #endif
 
-static const struct i2c_device_id atml_ts_i2c_id[] = {
-	{ ATMEL_QT602240_NAME, 0 },
+static const struct i2c_device_id atml_224e_ts_i2c_id[] = {
+	{ ATMEL_MXT224E_NAME, 0 },
 	{ }
 };
 
-static struct i2c_driver atmel_ts_driver = {
-	.id_table = atml_ts_i2c_id,
-	.probe = atmel_ts_probe,
-	.remove = atmel_ts_remove,
+static struct i2c_driver atmel_224e_ts_driver = {
+	.id_table = atml_224e_ts_i2c_id,
+	.probe = atmel_224e_ts_probe,
+	.remove = atmel_224e_ts_remove,
 #ifndef CONFIG_HAS_EARLYSUSPEND
-	.suspend = atmel_ts_suspend,
-	.resume = atmel_ts_resume,
+	.suspend = atmel_224e_ts_suspend,
+	.resume = atmel_224e_ts_resume,
 #endif
 	.driver = {
-			.name = ATMEL_QT602240_NAME,
+			.name = ATMEL_MXT224E_NAME,
 	},
 };
 
-static int __devinit atmel_ts_init(void)
+static int __devinit atmel_224e_ts_init(void)
 {
-	printk(KERN_INFO "atmel_ts_init():\n");
-	return i2c_add_driver(&atmel_ts_driver);
+	printk(KERN_INFO "atmel_224e_ts_init():\n");
+	return i2c_add_driver(&atmel_224e_ts_driver);
 }
 
-static void __exit atmel_ts_exit(void)
+static void __exit atmel_224e_ts_exit(void)
 {
-	i2c_del_driver(&atmel_ts_driver);
+	i2c_del_driver(&atmel_224e_ts_driver);
 }
 
-module_init(atmel_ts_init);
-module_exit(atmel_ts_exit);
+module_init(atmel_224e_ts_init);
+module_exit(atmel_224e_ts_exit);
 
 MODULE_DESCRIPTION("ATMEL Touch driver");
 MODULE_LICENSE("GPL");
-
-#endif
 
