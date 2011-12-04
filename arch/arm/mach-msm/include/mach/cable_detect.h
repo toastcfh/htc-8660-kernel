@@ -57,6 +57,7 @@ struct usb_id_mpp_config_data {
 	/* 1 : uart, 0 : usb */
 	void (*usb_uart_switch)(int);
 	void (*usb_dpdn_switch)(int);
+	void (*mhl_usb_switch)(int);
 
 	/* for accessory detection */
 	u8 accessory_type;

@@ -1367,11 +1367,13 @@ static struct platform_driver msm_vpe_driver = {
 
 static int __init msm_vpe_init(void)
 {
+#ifndef CONFIG_MACH_PYRAMID
 	extern unsigned engineerid;
 	extern unsigned system_rev;
 	if (system_rev == 0x80 && engineerid == 0x1)
 		return 0;
 	else
+#endif
 		return platform_driver_register(&msm_vpe_driver);
 }
 module_init(msm_vpe_init);

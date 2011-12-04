@@ -4456,8 +4456,10 @@ static int msm_device_init(struct msm_cam_device *pmsm,
 	return rc;
 }
 
+#ifndef CONFIG_MACH_PYRAMID
 extern unsigned engineerid;
 extern unsigned system_rev;
+#endif
 
 int msm_camera_drv_start_liteon(struct platform_device *dev,
                 int (*sensor_probe)(struct msm_camera_sensor_info *,
@@ -4471,10 +4473,12 @@ int msm_camera_drv_start(struct platform_device *dev,
 	struct msm_sync *sync;
 	int rc = -ENODEV;
 
+#ifndef CONFIG_MACH_PYRAMID
 	if(system_rev ==0x80 && engineerid == 0x1)
 	{
 		return 	msm_camera_drv_start_liteon(dev,sensor_probe);
 	}
+#endif
 	
 	if (camera_node >= MAX_SENSOR_NUM) {
 		pr_err("[CAM] %s: too many camera sensors\n", __func__);

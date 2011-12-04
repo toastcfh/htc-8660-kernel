@@ -2193,8 +2193,10 @@ void mipi_novatek_panel_type_detect(void) {
 		/* clean up ack_err_status. Sony C3 LCM sometimes fails to set
 		backlight. Novatek suggests to do a BTA and a read to clear
 		AwER, and set backlight cmd can work. Workaround solution. */
+#ifdef MIPI_READ_DISPLAY_ID /* mipi read command verify */
 		mipi_dsi_cmd_bta_sw_trigger();
 		mipi_novatek_manufacture_id();
+#endif
 	} else if (panel_type == PANEL_ID_RIR_SHARP_NT) {
 		pr_info("%s: panel_type=PANEL_ID_RIR_SHARP_NT\n", __func__);
 		strcat(ptype, "PANEL_ID_RIR_SHARP_NT");
@@ -2360,6 +2362,7 @@ static void mipi_novatek_display_on(struct msm_fb_data_type *mfd)
 	mutex_unlock(&cmdlock);
 }
 
+#ifndef CONFIG_MACH_PYRAMID
 static int mipi_novatek_send_cmds(struct dsi_cmd_desc *novatek_cmds, uint32_t size)
 {
 	pr_debug("%s+\n", __func__);
@@ -2373,6 +2376,7 @@ end:
 	pr_debug("%s-\n", __func__);
 	return 0;
 }
+#endif
 
 static void mipi_novatek_bkl_switch(struct msm_fb_data_type *mfd, bool on)
 {
@@ -2415,12 +2419,16 @@ static void mipi_novatek_bkl_ctrl(bool on)
 
 static int mipi_novatek_lcd_probe(struct platform_device *pdev)
 {
+#ifndef CONFIG_MACH_PYRAMID
 	struct msm_fb_data_type *mfd;
 	mfd = platform_get_drvdata(pdev);
+#endif
 	if (pdev->id == 0) {
 		mipi_novatek_pdata = pdev->dev.platform_data;
+#ifndef CONFIG_MACH_PYRAMID
 		if (mipi_novatek_pdata)
 			mipi_novatek_pdata->mipi_send_cmds = mipi_novatek_send_cmds;
+#endif
 		mutex_init(&cmdlock);
 		return 0;
 	}

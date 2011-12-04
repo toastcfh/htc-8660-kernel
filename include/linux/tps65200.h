@@ -39,6 +39,7 @@ struct tps65200_chg_int_data {
 };
 
 struct tps65200_platform_data {
+	int charger_check;
 	int gpio_chg_stat;
 	int gpio_chg_int;
 #ifdef CONFIG_SUPPORT_DQ_BATTERY
