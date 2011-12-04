@@ -178,6 +178,7 @@ static int sco_connect(struct sock *sk)
 {
 	bdaddr_t *src = &bt_sk(sk)->src;
 	bdaddr_t *dst = &bt_sk(sk)->dst;
+	__u16 pkt_type = sco_pi(sk)->pkt_type;
 	struct sco_conn *conn;
 	struct hci_conn *hcon;
 	struct hci_dev  *hdev;
@@ -194,10 +195,13 @@ static int sco_connect(struct sock *sk)
 
 	if (lmp_esco_capable(hdev) && !disable_esco)
 		type = ESCO_LINK;
-	else
+	else {
 		type = SCO_LINK;
+		pkt_type &= SCO_ESCO_MASK;
+	}
 
-	hcon = hci_connect(hdev, type, dst, BT_SECURITY_LOW, HCI_AT_NO_BONDING);
+	hcon = hci_connect(hdev, type, pkt_type, dst,
+		BT_SECURITY_LOW, HCI_AT_NO_BONDING);
 	if (!hcon)
 		goto done;
 
