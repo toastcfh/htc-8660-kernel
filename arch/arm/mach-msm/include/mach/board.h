@@ -365,7 +365,7 @@ struct msm_panel_common_pdata {
 	struct panel_dcr_info *dcr_panel_pinfo;
 	unsigned int auto_bkl_stat;
 	int (*bkl_enable)(int);
-#ifdef CONFIG_MACH_SHOOTER_U
+#if defined(CONFIG_MACH_SHOOTER_U) || defined(CONFIG_MACH_SHOOTER)
 	int (*mipi_send_cmds)(struct dsi_cmd_desc *cmds, uint32_t len);
 #endif
 };

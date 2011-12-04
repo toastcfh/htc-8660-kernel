@@ -22,7 +22,7 @@
 #include "mipi_novatek.h"
 
 //#define HTC_USED_0_3_MIPI_INIT
-#ifdef CONFIG_MACH_SHOOTER_U
+#if defined(CONFIG_MACH_SHOOTER_U) || defined(CONFIG_MACH_SHOOTER)
 #define MIPI_READ_DISPLAY_ID	1
 #endif
 // -----------------------------------------------------------------------------

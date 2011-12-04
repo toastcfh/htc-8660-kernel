@@ -1,4 +1,4 @@
-#if defined (CONFIG_MACH_SHOOTER_U) || defined (CONFIG_MACH_PYRAMID)
+#if defined (CONFIG_MACH_SHOOTER_U) || defined (CONFIG_MACH_PYRAMID) || defined (CONFIG_MACH_SHOOTER)
 #include "atmel_224e_3d.c"
 #else
 

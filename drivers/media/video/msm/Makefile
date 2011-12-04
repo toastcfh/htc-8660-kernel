@@ -11,7 +11,7 @@ ifdef CONFIG_CAMERA_ZSL
 obj-$(CONFIG_MSM_CAMERA_8X60) += msm_camera-8x60_ZSL.o msm_io_8x60_ZSL.o msm_vfe_8x60_ZSL.o msm_axi_qos.o msm_vpe1_8x60_ZSL.o
 else
 obj-$(CONFIG_MSM_CAMERA_8X60) += msm_camera-8x60.o msm_io_8x60.o msm_vfe_8x60.o msm_axi_qos.o msm_vpe1_8x60.o
-ifdef CONFIG_MACH_SHOOTER_U
+ifdef CONFIG_SP3D
 obj-$(CONFIG_MSM_CAMERA_8X60) += msm_camera.o msm_vfe31.o msm_vpe1.o
 endif
 endif
