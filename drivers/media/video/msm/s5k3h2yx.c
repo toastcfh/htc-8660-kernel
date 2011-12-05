@@ -199,8 +199,10 @@ enum s5k3h2yx_reg_update_t{
 static int sensor_probe_node = 0;
 static int preview_frame_count = 0;
 static int g_gpio_vcm_pwd = 0;
+#ifndef CONFIG_MACH_RIDER
 int s5k3h2yx_vcm_workaround(int on_off);
 void vcm_workaround_set_camera_running(int isRunning);
+#endif
 int vcm_workaround_get_camera_running(void);
 
 
@@ -1009,7 +1011,9 @@ static int s5k3h2yx_common_deinit(const struct msm_camera_sensor_info *data)
 
 	pr_info("[CAM]  s5k3h2yx_common_deinit()  camera_running=0\n");
 	msleep(1);
+#ifndef CONFIG_MACH_RIDER
 	vcm_workaround_set_camera_running(0);
+#endif
 	return 0;
 }
 
@@ -1025,7 +1029,9 @@ static int s5k3h2yx_common_init(const struct msm_camera_sensor_info *data)
 
 	pr_info("[CAM]%s\n", __func__);
 	pr_info("[CAM]  s5k3h2yx_common_init()  camera_running=1\n");
+#ifndef CONFIG_MACH_RIDER
 	vcm_workaround_set_camera_running(1);
+#endif
 	msleep(1);
 
 	s5k3h2yx_vreg_enable(s5k3h2yx_pdev);
@@ -1103,7 +1109,9 @@ init_fail:
 	pr_err("[CAM]s5k3h2yx_common_init failed\n");
 
 	pr_info("[CAM]  s5k3h2yx_common_init()  camera_running=0\n");
+#ifndef CONFIG_MACH_RIDER
 	vcm_workaround_set_camera_running(0);
+#endif
 init_done:
 	return rc;
 }
@@ -1762,6 +1770,7 @@ int s5k3h2yx_sensor_config(void __user *argp)
 
 /* For HW VCM work-around */
 /**********************************************************************************/
+#ifndef CONFIG_MACH_RIDER
 int s5k3h2yx_vcm_workaround(int on_off)
 {
 	static int vcm_on = 0;
@@ -2006,6 +2015,7 @@ int s5k3h2yx_vcm_workaround(int on_off)
 	return 0;
 }
 /**********************************************************************************/
+#endif
 
 static int s5k3h2yx_sensor_release(void)
 {
