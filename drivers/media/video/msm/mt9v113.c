@@ -27,7 +27,11 @@
 #include <linux/slab.h>
 
 #ifdef CONFIG_MSM_CAMERA_8X60
+#ifdef CONFIG_CAMERA_ZSL
+#include <mach/camera-8x60_ZSL.h>
+#else
 #include <mach/camera-8x60.h>
+#endif
 #endif
 
 #include <media/msm_camera_sensor.h>

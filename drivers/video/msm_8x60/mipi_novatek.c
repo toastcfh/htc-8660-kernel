@@ -2362,7 +2362,7 @@ static void mipi_novatek_display_on(struct msm_fb_data_type *mfd)
 	mutex_unlock(&cmdlock);
 }
 
-#if (!defined(CONFIG_MACH_PYRAMID) && !defined(CONFIG_MACH_RIDER))
+#if (defined(CONFIG_MACH_SHOOTER) || defined(CONFIG_MACH_SHOOTERU))
 static int mipi_novatek_send_cmds(struct dsi_cmd_desc *novatek_cmds, uint32_t size)
 {
 	pr_debug("%s+\n", __func__);
@@ -2419,13 +2419,13 @@ static void mipi_novatek_bkl_ctrl(bool on)
 
 static int mipi_novatek_lcd_probe(struct platform_device *pdev)
 {
-#if (!defined(CONFIG_MACH_PYRAMID) && !defined(CONFIG_MACH_RIDER))
+#if (defined(CONFIG_MACH_SHOOTER) || defined(CONFIG_MACH_SHOOTERU))
 	struct msm_fb_data_type *mfd;
 	mfd = platform_get_drvdata(pdev);
 #endif
 	if (pdev->id == 0) {
 		mipi_novatek_pdata = pdev->dev.platform_data;
-#if (!defined(CONFIG_MACH_PYRAMID) && !defined(CONFIG_MACH_RIDER))
+#if (defined(CONFIG_MACH_SHOOTER) || defined(CONFIG_MACH_SHOOTERU))
 		if (mipi_novatek_pdata)
 			mipi_novatek_pdata->mipi_send_cmds = mipi_novatek_send_cmds;
 #endif

@@ -36,7 +36,8 @@
 #define TVOUT_VFRMT_PAL_BDGHIN_720x576i		2
 #define TVOUT_VFRMT_PAL_M_720x480i		3
 #define TVOUT_VFRMT_PAL_N_720x480i		4
-#elif defined(CONFIG_FB_MSM_HDMI_COMMON)
+#endif
+#ifdef CONFIG_FB_MSM_HDMI_COMMON
 /* all video formats defined by EIA CEA 861D */
 #define HDMI_VFRMT_640x480p60_4_3	0
 #define HDMI_VFRMT_720x480p60_4_3	1

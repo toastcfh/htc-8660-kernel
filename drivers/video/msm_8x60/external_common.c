@@ -365,9 +365,7 @@ static ssize_t external_common_wta_video_mode(struct device *dev,
 	external_common_state->disp_mode_list.num_of_elements = 1;
 	external_common_state->disp_mode_list.disp_mode_list[0] = video_mode;
 #elif defined(CONFIG_FB_MSM_TVOUT)
-	external_common_state->tvout_enable(0);
 	external_common_state->video_resolution = video_mode;
-	external_common_state->tvout_enable(1);
 #endif
 	DEV_DBG("%s: 'mode=%d %s' successful (sending OFF/ONLINE)\n", __func__,
 		video_mode, video_format_2string(video_mode));

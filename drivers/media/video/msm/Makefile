@@ -97,7 +97,11 @@ else
 ifdef CONFIG_MACH_SAGA
 obj-$(CONFIG_MT9V113) += mt9v113.o mt9v113_reg_lens_9251.o
 else
+ifdef CONFIG_MACH_DOUBLESHOT
+obj-$(CONFIG_MT9V113) += mt9v113.o mt9v113_reg_dot.o
+else
 obj-$(CONFIG_MT9V113) += mt9v113.o mt9v113_reg_lens_9218.o
+endif
 endif
 endif
 obj-$(CONFIG_MSM_GEMINI) += msm_gemini_dev.o msm_gemini_sync.o msm_gemini_core.o msm_gemini_hw.o msm_gemini_platform.o

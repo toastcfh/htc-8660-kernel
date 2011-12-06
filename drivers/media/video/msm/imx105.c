@@ -24,11 +24,15 @@
 #include <linux/wakelock.h>
 #include <media/msm_camera_sensor.h>
 #include <mach/gpio.h>
-#include <mach/camera-8x60.h>
 #include <mach/vreg.h>
 #include <linux/slab.h>
 #include <asm/mach-types.h>
 #include "imx105.h"
+#ifdef CONFIG_CAMERA_ZSL
+#include <mach/camera-8x60_ZSL.h>
+#else
+#include <mach/camera-8x60.h>
+#endif
 
 
 #define REG_GROUPED_PARAMETER_HOLD			0x0104
