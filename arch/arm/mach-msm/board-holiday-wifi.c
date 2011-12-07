@@ -9,7 +9,11 @@
 #include <asm/gpio.h>
 #include <asm/io.h>
 #include <linux/skbuff.h>
+#ifdef CONFIG_BCM4329_PURE_ANDROID
+#include <linux/wlan_plat.h>
+#else
 #include <linux/wifi_tiwlan.h>
+#endif
 
 #include "board-holiday.h"
 
@@ -28,6 +32,8 @@ int holiday_wifi_get_mac_addr(unsigned char *buf);
 #define WLAN_SECTION_SIZE_3	(PREALLOC_WLAN_NUMBER_OF_BUFFERS * 1024)
 
 #define WLAN_SKB_BUF_NUM	16
+
+#define HW_OOB 1
 
 static struct sk_buff *wlan_static_skb[WLAN_SKB_BUF_NUM];
 
@@ -78,7 +84,7 @@ static struct resource holiday_wifi_resources[] = {
 		.name		= "bcm4329_wlan_irq",
 		.start		= MSM_GPIO_TO_INT(HOLIDAY_GPIO_WIFI_IRQ),
 		.end		= MSM_GPIO_TO_INT(HOLIDAY_GPIO_WIFI_IRQ),
-#ifdef HW_OOB
+#ifdef CONFIG_BCM4329_PURE_ANDROID
 		.flags          = IORESOURCE_IRQ | IORESOURCE_IRQ_HIGHLEVEL | IORESOURCE_IRQ_SHAREABLE,
 #else
 		.flags          = IORESOURCE_IRQ | IORESOURCE_IRQ_LOWEDGE,
@@ -92,7 +98,10 @@ static struct wifi_platform_data holiday_wifi_control = {
 	.set_carddetect = holiday_wifi_set_carddetect,
 	.mem_prealloc   = holiday_wifi_mem_prealloc,
 	.get_mac_addr	= holiday_wifi_get_mac_addr,
+#ifndef CONFIG_BCM4329_PURE_ANDROID
 	.dot11n_enable  = 1,
+	.cscan_enable	= 1,
+#endif
 };
 
 static struct platform_device holiday_wifi_device = {
