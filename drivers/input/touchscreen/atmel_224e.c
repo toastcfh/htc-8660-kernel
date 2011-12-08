@@ -1,4 +1,4 @@
-#ifndef CONFIG_MACH_RUBY
+#if !(defined(CONFIG_MACH_RUBY) || defined(CONFIG_MACH_VIGOR))
 #include "atmel_224e_3d.c"
 #else
 

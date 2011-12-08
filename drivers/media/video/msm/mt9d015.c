@@ -114,8 +114,9 @@ static int cam_debug_init(void);
 static struct dentry *debugfs_base;
 #endif
 
-
+#ifdef CONFIG_MACH_RUBY
 void vcm_workaround_set_camera_running(int isRunning);
+#endif
 /*=============================================================*/
 
 static int mt9d015_i2c_rxdata(unsigned short saddr,
@@ -916,7 +917,9 @@ int mt9d015_sensor_open_init(struct msm_camera_sensor_info *data)
 	}
 
 	pr_info("[CAM]  mt9d015_sensor_open_init()  camera_running=1\n");
+#ifdef CONFIG_MACH_RUBY
 	vcm_workaround_set_camera_running(1);
+#endif
 	msleep(1);
 
 	/* HTC Camera Add Start */
@@ -999,8 +1002,9 @@ init_fail:
 	mt9d015_probe_init_done(data);
 
 	pr_info("[CAM]  mt9d015_sensor_open_init()  camera_running=0\n");
+#ifdef CONFIG_MACH_RUBY
 	vcm_workaround_set_camera_running(0);
-
+#endif
 init_done:
 	pr_info("[CAM] init_done\n");
 	return rc;
@@ -1276,8 +1280,9 @@ static int mt9d015_sensor_release(void)
 
 	pr_info("[CAM]  mt9d015_sensor_release()  camera_running=0\n");
 	msleep(1);
+#ifdef CONFIG_MACH_RUBY
 	vcm_workaround_set_camera_running(0);
-
+#endif
 	kfree(mt9d015_ctrl);
 	mt9d015_ctrl = NULL;
 	CDBG("mt9d015_release completed\n");

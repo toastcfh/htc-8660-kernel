@@ -187,12 +187,34 @@ struct msm_camera_sensor_flash_data {
 	struct msm_camera_sensor_flash_src *flash_src;
 };
 
+/* HTC start jason 20110811 */
+#define FL_STATE_NUM 10
+
+struct camera_led_est {
+  uint8_t enable;
+  uint32_t led_state;
+  uint32_t current_ma;
+  uint32_t lumen_value;
+  int32_t min_focus_step;
+  int32_t max_focus_step;
+};
+
+struct camera_flash_info {
+  uint16_t low_temp_limit;
+  uint16_t low_cap_limit;
+  uint32_t low_limit_led_state;
+  uint32_t max_led_current_ma;
+  struct camera_led_est led_est_table[FL_STATE_NUM];
+};
+/* HTC end */
+
 struct camera_flash_cfg {
 	int num_flash_levels;
 	int (*camera_flash)(int level);
 	uint16_t low_temp_limit;
 	uint16_t low_cap_limit;
 	uint8_t postpone_led_mode;
+	struct camera_flash_info *flash_info;	/* HTC jason 20110811 */
 };
 
 struct msm_camera_sensor_strobe_flash_data {

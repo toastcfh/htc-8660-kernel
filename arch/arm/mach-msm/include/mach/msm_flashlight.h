@@ -45,6 +45,8 @@ enum flashlight_mode_flags {
 	FL_MODE_TORCH_LEVEL_2,
 	FL_MODE_CAMERA_EFFECT_FLASH,
 	FL_MODE_CAMERA_EFFECT_PRE_FLASH,
+	FL_MODE_FLASH_LEVEL1,
+	FL_MODE_FLASH_LEVEL2,
 };
 
 struct flashlight_platform_data {

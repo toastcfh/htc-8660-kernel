@@ -164,6 +164,7 @@ struct msm_hsusb_platform_data {
 	int (*rpc_connect)(int);
 	/* 1 : mhl, 0 : usb */
 	void (*usb_mhl_switch)(bool);
+	void (*notify_9k_ac_in)(int);
 #ifdef CONFIG_USB_FUNCTION
 	/* USB device descriptor fields */
 	__u16 vendor_id;
