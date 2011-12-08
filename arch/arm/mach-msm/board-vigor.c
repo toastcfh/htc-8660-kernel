@@ -843,6 +843,22 @@ static struct platform_device usb_mass_storage_device = {
 	},
 };
 
+#ifdef CONFIG_USB_ANDROID_RNDIS
+static struct usb_ether_platform_data rndis_pdata = {
+	/* ethaddr is filled by board_serialno_setup */
+	.vendorID  = 0x18d1,
+	.vendorDescr  = "Google, Inc.",
+};
+
+static struct platform_device rndis_device = {
+	.name  = "rndis",
+	.id  = -1,
+	.dev  = {
+	  .platform_data = &rndis_pdata,
+     },
+};
+#endif
+
 #ifdef CONFIG_USB_GADGET_VERIZON_PRODUCT_ID
 static int vigor_usb_product_id_match(int product_id, int intrsharing)
 {
@@ -4418,7 +4434,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 12, 25},
 		.config_T8 = {25, 0, 5, 5, 0, 64, 5, 35, 5, 192},
@@ -4450,7 +4465,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 12, 25},
 		.config_T8 = {25, 0, 5, 5, 0, 64, 5, 35, 5, 192},
@@ -4482,7 +4496,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 8, 25},
 		.config_T8 = {25, 0, 5, 5, 0, 64, 5, 35, 5, 192},
@@ -4513,7 +4526,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 8, 25},
 		.config_T8 = {25, 0, 5, 5, 0, 64, 5, 35, 5, 192},
@@ -4543,7 +4555,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 8, 25},
 		.config_T8 = {25, 0, 5, 20, 0, 0, 5, 35, 5, 192},
@@ -4574,7 +4585,6 @@ struct atmel_i2c_platform_data vigor_ts_atmel_data[] = {
 		.abs_width_max = 20,
 		.gpio_irq = VIGOR_TP_ATT_N,
 		.power = vigor_ts_atmel_power,
-		.unlock_attr = 1,
 		.config_T6 = {0, 0, 0, 0, 0, 0},
 		.config_T7 = {16, 8, 25},
 		.config_T8 = {25, 0, 5, 20, 0, 0, 5, 35, 5, 192},
@@ -6614,6 +6624,11 @@ static void vigor_add_usb_devices(void)
 
 	msm_device_hsusb.dev.platform_data = &msm_hsusb_pdata;
 	platform_device_register(&msm_device_hsusb);
+
+#ifdef CONFIG_USB_ANDROID_RNDIS
+	platform_device_register(&rndis_device);
+#endif
+
 	platform_device_register(&usb_mass_storage_device);
 	platform_device_register(&android_usb_device);
 
