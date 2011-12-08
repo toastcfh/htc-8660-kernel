@@ -100,6 +100,7 @@ void board_get_keycaps_tag(char **);
 void board_get_cid_tag(char **);
 void board_get_carrier_tag(char **);
 void board_get_mid_tag(char **);
+void board_get_sku_color_tag(char **);
 int board_emmc_boot(void);
 
 void notify_usb_connected(int online);

@@ -594,7 +594,7 @@ static int __init charm_modem_probe(struct platform_device *pdev)
 	gpio_request(MDM2AP_ERRFATAL, "MDM2AP_ERRFATAL");
 	gpio_direction_input(MDM2AP_ERRFATAL);
 
-#ifdef CONFIG_MACH_VIGOR
+#if defined(CONFIG_MACH_VIGOR) || defined(CONFIG_MACH_HOLIDAY)
 	gpio_request(MDM2AP_WAKEUP, "MDM2AP_WAKEUP");
 	gpio_direction_output(MDM2AP_WAKEUP, 1);
 #endif
@@ -694,7 +694,7 @@ static void notify_mdm9k_shutdown(void)
 
 static void charm_modem_shutdown(struct platform_device *pdev)
 {
-#if 0
+#ifndef CONFIG_MACH_RUBY
 	int i;
 #endif
 
@@ -702,7 +702,7 @@ static void charm_modem_shutdown(struct platform_device *pdev)
 	disable_irq_nosync(charm_errfatal_irq);
 	disable_irq_nosync(charm_status_irq);
 
-#ifdef CONFIG_MACH_VIGOR
+#if defined(CONFIG_MACH_VIGOR) || defined(CONFIG_MACH_HOLIDAY)
 	if (system_state == SYSTEM_POWER_OFF)
 		gpio_set_value(MDM2AP_WAKEUP, 0);
 	else
@@ -725,7 +725,7 @@ static void charm_modem_shutdown(struct platform_device *pdev)
 	}
 
 /*        per radio comment, mdm may not set MDM2APP_STATUS to 0 always, thus ignore this polling*/
-#if 0
+#ifndef CONFIG_MACH_RUBY
 	if (!charm_MDM_error_flag) {	/* Modified by HTC */
 		for (i = CHARM_MODEM_TIMEOUT; i > 0; i -= CHARM_MODEM_DELTA) {
 			pet_watchdog();

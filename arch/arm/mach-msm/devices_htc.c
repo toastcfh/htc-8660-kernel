@@ -949,3 +949,19 @@ int unregister_notifier_by_psensor(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&psensor_notifier_list, nb);
 }
 
+static char *sku_color_tag = NULL;
+static int __init board_set_qwerty_color_tag(char *get_sku_color)
+{
+	if (strlen(get_sku_color))
+		sku_color_tag = get_sku_color;
+	else
+		sku_color_tag = NULL;
+	return 1;
+}
+__setup("androidboot.qwerty_color=", board_set_qwerty_color_tag);
+
+void board_get_sku_color_tag(char **ret_data)
+{
+	*ret_data = sku_color_tag;
+}
+EXPORT_SYMBOL(board_get_sku_color_tag);

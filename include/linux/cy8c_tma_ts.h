@@ -26,6 +26,7 @@ struct cy8c_i2c_platform_data {
 	uint8_t orient;
 	uint8_t timeout;
 	uint8_t interval;
+	uint8_t unlock_attr;
 	int abs_x_min;
 	int abs_x_max;
 	int abs_y_min;
