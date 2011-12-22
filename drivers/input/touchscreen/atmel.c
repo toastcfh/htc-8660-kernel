@@ -436,7 +436,7 @@ static ssize_t atmel_diag_show(struct device *dev,
 				return count;
 			} else {
 				rawdata = data[loop_j+1] << 8 | data[loop_j];
-				count += sprintf(buf + count, "%6d", rawdata);
+				count += sprintf(buf + count, "%5d", rawdata);
 				if (((loop_i * 64 + loop_j / 2) % y) == (y - 1))
 					count += sprintf(buf + count, "\n");
 			}
@@ -1181,11 +1181,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 	struct i2c_msg msg[2];
 	uint8_t data[16];
 	uint8_t CRC_check = 0;
-#if defined(CONFIG_ARCH_MSM8X60)
-	int cable_connect_type = 0;
-#endif
-	uint16_t x_range;
-	uint16_t y_range;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		printk(KERN_ERR "TOUCH_ERR: need I2C_FUNC_I2C\n");
@@ -1326,21 +1321,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 		}
 
 		ts->finger_support = pdata->config_T9[T9_CFG_NUMTOUCH];
-		x_range = ((uint8_t)(pdata->config_T9[T9_CFG_XRANGE + 1]) << 8) +
-					(uint8_t)(pdata->config_T9[T9_CFG_XRANGE]);
-		y_range = ((uint8_t)(pdata->config_T9[T9_CFG_YRANGE + 1]) << 8) +
-					(uint8_t)(pdata->config_T9[T9_CFG_YRANGE]);
-		if ((pdata->config_T9[T9_CFG_ORIENT] & 0x1) == 0) {
-			if (x_range >= 1024)
-				ts->high_res_x_en = 1;
-			if (y_range >= 1024)
-				ts->high_res_y_en = 1;
-		} else { /* Switches the X and Y */
-			if (x_range >= 1024)
-				ts->high_res_y_en = 1;
-			if (y_range >= 1024)
-				ts->high_res_x_en = 1;
-		}
 		printk(KERN_INFO
 			"finger_type: %d, max finger: %d\n",
 			ts->finger_type, ts->finger_support);
@@ -1681,11 +1661,6 @@ static int atmel_ts_probe(struct i2c_client *client,
 			ts->input_dev->name);
 
 	usb_register_notifier(&cable_status_handler);
-	if (ts->wlc_config[0])
-		register_notifier_wireless_charger(&wlc_status_handler);
-#else
-	cable_detect_register_notifier(&cable_status_handler);
-#endif
 	register_notifier_by_psensor(&psensor_status_handler);
 
 	return 0;
