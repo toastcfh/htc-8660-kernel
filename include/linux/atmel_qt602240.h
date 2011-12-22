@@ -449,7 +449,6 @@ struct atmel_i2c_platform_data {
 	int8_t wlc_config[7];
 	uint8_t wlc_freq[5];
 	int8_t noise_config[3];
-	uint8_t cal_tchthr[2];
 	uint8_t call_tchthr[2];
 	uint8_t locking_config[1];
 	uint16_t filter_level[4];
