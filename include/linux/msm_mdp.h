@@ -48,7 +48,10 @@
 #define MSMFB_OVERLAY_CHANGE_ZORDER_VG_PIPES	_IOW(MSMFB_IOCTL_MAGIC, 146, unsigned int)
 #define MSMFB_OVERLAY_3D       _IOWR(MSMFB_IOCTL_MAGIC, 147, \
 						struct msmfb_overlay_3d)
-
+#define MSMFB_MIXER_INFO       _IOWR(MSMFB_IOCTL_MAGIC, 148, \
+						struct msmfb_mixer_info_req)
+#define MSMFB_OVERLAY_PLAY_WAIT _IOWR(MSMFB_IOCTL_MAGIC, 149, \
+						struct msmfb_overlay_data)
 #endif
 
 enum {
@@ -107,6 +110,7 @@ enum {
 #define MDP_OV_PIPE_SHARE 0x00800000
 #define MDP_DEINTERLACE_ODD		0x00400000
 #define MDP_OV_PLAY_NOWAIT		0x00200000
+#define MDP_SOURCE_ROTATED_90		0x00100000
 
 #define MDP_TRANSP_NOP	0xffffffff
 #define MDP_ALPHA_NOP	0xff
@@ -235,6 +239,24 @@ struct msmfb_overlay_blt {
 struct mdp_page_protection {
 	uint32_t page_protection;
 };
+
+struct mdp_mixer_info {
+	int pndx;
+	int pnum;
+	int ptype;
+	int mixer_num;
+	int z_order;
+};
+
+#define MAX_PIPE_PER_MIXER  4
+
+struct msmfb_mixer_info_req {
+	int mixer_num;
+	int cnt;
+	struct mdp_mixer_info info[MAX_PIPE_PER_MIXER];
+};
+
+
 #ifdef __KERNEL__
 
 /* get the framebuffer physical address information */

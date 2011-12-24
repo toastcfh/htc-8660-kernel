@@ -176,7 +176,7 @@ struct msm_fb_data_type {
 	int		(*esd_fixup)(uint32_t mfd_data);
 	uint32_t        width;
 	uint32_t        height;
-
+	u32 ov_start, ov_end;
 	struct timer_list frame_update_timer;
 	struct msm_panel_common_pdata *mdp_pdata;
 #if defined CONFIG_FB_MSM_SELF_REFRESH
