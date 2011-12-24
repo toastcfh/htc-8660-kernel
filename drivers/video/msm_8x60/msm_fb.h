@@ -173,6 +173,7 @@ struct msm_fb_data_type {
 	int		(*esd_fixup)(uint32_t mfd_data);
 	uint32_t	width;
 	uint32_t	height;
+	u32 ov_start, ov_end;
 };
 
 struct dentry *msm_fb_get_debugfs_root(void);

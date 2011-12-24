@@ -66,7 +66,7 @@ atomic_t ov_unset = ATOMIC_INIT(0);
 struct mdp4_overlay_ctrl {
 	struct mdp4_pipe_desc ov_pipe[OVERLAY_PIPE_MAX];/* 4 */
 	struct mdp4_overlay_pipe plist[MDP4_MAX_PIPE];	/* 4 + 2 */
-	struct mdp4_overlay_pipe *stage[MDP4_MAX_MIXER][MDP4_MAX_STAGE + 2];
+	struct mdp4_overlay_pipe *stage[MDP4_MAX_MIXER][MDP4_MIXER_STAGE_MAX];
 	uint32 panel_mode;
 	uint32 mixer0_played;
 	uint32 mixer1_played;
@@ -970,7 +970,8 @@ uint32 mdp4_overlay_format(struct mdp4_overlay_pipe *pipe)
 
 	if (pipe->alpha_enable)
 		format |= MDP4_FORMAT_ALPHA_ENABLE;
-
+	if (pipe->flags & MDP_SOURCE_ROTATED_90)
+		format |= MDP4_FORMAT_90_ROTATED;
 	format |= (pipe->unpack_count << 13);
 	format |= ((pipe->bpp - 1) << 9);
 	format |= (pipe->a_bit << 6);
@@ -1106,6 +1107,33 @@ int mdp4_overlay_pipe_staged(int mixer)
 		return p2;
 	else
 		return p1;
+}
+
+int mdp4_mixer_info(int mixer_num, struct mdp_mixer_info *info)
+{
+
+	int ndx, cnt;
+	struct mdp4_overlay_pipe *pipe;
+
+	if (mixer_num > MDP4_MIXER_MAX)
+		return -ENODEV;
+
+	cnt = 0;
+	ndx = 1; /* ndx 0 if not used */
+
+	for ( ; ndx < MDP4_MIXER_STAGE_MAX; ndx++) {
+		pipe = ctrl->stage[mixer_num][ndx];
+		if (pipe == NULL)
+			continue;
+		info->z_order = pipe->mixer_stage - MDP4_MIXER_STAGE0;
+		info->ptype = pipe->pipe_type;
+		info->pnum = pipe->pipe_num;
+		info->pndx = pipe->pipe_ndx;
+		info->mixer_num = pipe->mixer_num;
+		info++;
+		cnt++;
+	}
+	return cnt;
 }
 
 void mdp4_mixer_stage_up(struct mdp4_overlay_pipe *pipe)
@@ -2111,6 +2139,29 @@ uint32 tile_mem_size(struct mdp4_overlay_pipe *pipe, struct tile_desc *tp)
 	row_num_w = (pipe->src_width + tile_w - 1) / tile_w;
 	row_num_h = (pipe->src_height + tile_h - 1) / tile_h;
 	return ((row_num_w * row_num_h * tile_w * tile_h) + 8191) & ~8191;
+}
+
+int mdp4_overlay_play_wait(struct fb_info *info, struct msmfb_overlay_data *req)
+{
+       struct msm_fb_data_type *mfd = (struct msm_fb_data_type *)info->par;
+       struct mdp4_overlay_pipe *pipe;
+
+       if (mfd == NULL)
+               return -ENODEV;
+
+       if (!mfd->panel_power_on) /* suspended */
+               return -EPERM;
+
+       pipe = mdp4_overlay_ndx2pipe(req->id);
+
+       if (mutex_lock_interruptible(&mfd->dma->ov_mutex))
+               return -EINTR;
+
+       mdp4_overlay_dtv_wait_for_ov(mfd, pipe);
+
+       mutex_unlock(&mfd->dma->ov_mutex);
+
+       return 0;
 }
 
 #ifdef DEBUG_OVERLAY

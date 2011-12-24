@@ -2222,6 +2222,10 @@ config FB_BROADSHEET
 	  and could also have been called by other names when coupled with
 	  a bridge adapter.
 
+config FB_MSM_TRIPLE_BUFFER
+       bool "Support for triple frame buffer"
+       default n
+
 config MSM_KGSL_PAGE_TABLE_SIZE
 	hex "Size of pagetables"
 	default 0xFFF0000
