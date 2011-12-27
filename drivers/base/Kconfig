@@ -183,5 +183,4 @@ config GENLOCK_MISCDEVICE
          Create a miscdevice for the purposes of allowing userspace to create
          and interact with locks created using genlock.
 
-
 endmenu
