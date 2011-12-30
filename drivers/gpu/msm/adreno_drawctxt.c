@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/slab.h>
 
@@ -692,10 +687,6 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 	*cmds++ = PM4_REG(REG_PA_SC_AA_MASK);
 	*cmds++ = 0x0000ffff;	/* REG_PA_SC_AA_MASK */
 
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-	*cmds++ = PM4_REG(REG_RB_COLORCONTROL);
-	*cmds++ = 0x00000c20;
-
 	/* load the patched vertex shader stream */
 	cmds = program_shader(cmds, 0, gmem2sys_vtx_pgm, GMEM2SYS_VTX_PGM_LEN);
 
@@ -777,19 +768,6 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 	*cmds++ = 0xbf800000;	/* -1.0f */
 	*cmds++ = 0x0;
 
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-	*cmds++ = PM4_REG(REG_RB_COLOR_MASK);
-	*cmds++ = 0x0000000f;	/* R = G = B = 1:enabled */
-
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-	*cmds++ = PM4_REG(REG_RB_COLOR_DEST_MASK);
-	*cmds++ = 0xffffffff;
-
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 3);
-	*cmds++ = PM4_REG(REG_SQ_WRAPPING_0);
-	*cmds++ = 0x00000000;
-	*cmds++ = 0x00000000;
-
 	/* load the stencil ref value
 	 * $AAM - do this later
 	 */
@@ -813,16 +791,6 @@ static unsigned int *build_gmem2sys_cmds(struct kgsl_device *device,
 	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
 	*cmds++ = PM4_REG(REG_RB_MODECONTROL);
 	*cmds++ = 0x6;		/* EDRAM copy */
-
-	if (device->chip_id == KGSL_CHIPID_LEIA_REV470) {
-		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
-		*cmds++ = 0;
-	}
-
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-	*cmds++ = PM4_REG(REG_PA_CL_CLIP_CNTL);
-	*cmds++ = 0x00010000;
 
 	if (device->chip_id == KGSL_CHIPID_LEIA_REV470) {
 		*cmds++ = 0xc0043600; /* packet 3 3D_DRAW_INDX_2 */
@@ -1032,16 +1000,6 @@ static unsigned int *build_sys2gmem_cmds(struct kgsl_device *device,
 	*cmds++ = PM4_REG(REG_RB_MODECONTROL);
 	/* draw pixels with color and depth/stencil component */
 	*cmds++ = 0x4;
-
-	if (device->chip_id == KGSL_CHIPID_LEIA_REV470) {
-		*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-		*cmds++ = PM4_REG(REG_LEIA_RB_LRZ_VSC_CONTROL);
-		*cmds++ = 0;
-	}
-
-	*cmds++ = pm4_type3_packet(PM4_SET_CONSTANT, 2);
-	*cmds++ = PM4_REG(REG_PA_CL_CLIP_CNTL);
-	*cmds++ = 0x00010000;
 
 	if (device->chip_id == KGSL_CHIPID_LEIA_REV470) {
 		*cmds++ = 0xc0043600; /* packet 3 3D_DRAW_INDX_2 */

@@ -9,27 +9,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 
 #include <linux/vmalloc.h>
 
 #include "kgsl.h"
-/*
-#include "kgsl_device.h"
-#include "kgsl_cmdstream.h"
-#include "kgsl_log.h"
-#include "kgsl_postmortem.h"
-#include "kgsl_pm4types.h"
-#include "yamato_reg.h"
-#include "leia_reg.h"
-#include "kgsl_yamato.h"
-#include "kgsl_yamato_debugfs.h"
-*/
 
 #include "adreno.h"
 #include "adreno_pm4types.h"
@@ -171,6 +155,22 @@ static const int leia_registers[] = {
 	0x12400, 0x12400, 0x12420, 0x12420
 };
 
+static struct {
+	int id;
+	const int *registers;
+	int len;
+} kgsl_registers[] = {
+	{ KGSL_CHIPID_LEIA_REV470, leia_registers,
+	  ARRAY_SIZE(leia_registers) / 2 },
+	{ KGSL_CHIPID_LEIA_REV470_TEMP, leia_registers,
+	  ARRAY_SIZE(leia_registers) / 2 },
+	{ KGSL_CHIPID_YAMATODX_REV21, yamato_registers,
+	  ARRAY_SIZE(yamato_registers) / 2 },
+	{ KGSL_CHIPID_YAMATODX_REV211, yamato_registers,
+	  ARRAY_SIZE(yamato_registers) / 2 },
+	{ 0x0, NULL, 0},
+};
+
 static uint32_t kgsl_is_pm4_len(uint32_t word)
 {
 	if (word == INVALID_RB_CMD)
@@ -231,14 +231,14 @@ static const char *kgsl_pm4_name(uint32_t word)
 }
 
 static void kgsl_dump_regs(struct kgsl_device *device,
-			   const char *label, const int *ranges, int count)
+			   const int *registers, int size)
 {
 	int range = 0, offset = 0;
 
-	for (range = 0; range < count; range++) {
+	for (range = 0; range < size; range++) {
 		/* start and end are in dword offsets */
-		int start = ranges[range * 2] / 4;
-		int end = ranges[range * 2 + 1] / 4;
+		int start = registers[range * 2] / 4;
+		int end = registers[range * 2 + 1] / 4;
 
 		unsigned char linebuf[32 * 3 + 2 + 32 + 1];
 		int linelen, i;
@@ -252,76 +252,10 @@ static void kgsl_dump_regs(struct kgsl_device *device,
 
 			hex_dump_to_buffer(regvals, linelen*4, 32, 4,
 				linebuf, sizeof(linebuf), 0);
-			KGSL_LOG_DUMP(device,"%s: %5.5X: %s\n", label,
-				      offset<<2, linebuf);
+			KGSL_LOG_DUMP(device,
+				"REG: %5.5X: %s\n", offset<<2, linebuf);
 		}
 	}
-}
-
-static void kgsl_leia_dump_regs(struct kgsl_device *device)
-{
-#ifndef CONFIG_MSM_KGSL_PSTMRTMDMP_NO_REG_DUMP
-
-	static const int reg_ranges[] = {
-		0x3414, 0x3414, 0x36b8, 0x36d4, 0x36d8, 0x36d8,
-		0x36e0, 0x36e4, 0x36f0, 0x3704, 0x8c24, 0x8c28,
-	};
-
-	if (device->chip_id == KGSL_CHIPID_LEIA_REV470)
-		kgsl_dump_regs(device, "LEIA", reg_ranges,
-			       ARRAY_SIZE(reg_ranges) / 2);
-#endif
-}
-
-static void kgsl_yamato_dump_regs(struct kgsl_device *device)
-{
-#ifndef CONFIG_MSM_KGSL_PSTMRTMDMP_NO_REG_DUMP
-	/* Byte offsets for registers. Each pair is in format of (start, end).
-	 */
-	static const int reg_ranges[] = {
-		0x0000, 0x0008, 0x0010, 0x002c, 0x00ec, 0x00f4,
-		0x0100, 0x0110, 0x0118, 0x011c, 0x0300, 0x0304,
-		0x0700, 0x0704, 0x070c, 0x0720, 0x0754, 0x0764,
-		0x0770, 0x0774, 0x07a8, 0x07a8, 0x07b8, 0x07cc,
-		0x07d8, 0x07dc, 0x07f0, 0x07fc, 0x0e44, 0x0e48,
-		0x0e6c, 0x0e78, 0x0ec8, 0x0ed4, 0x0edc, 0x0edc,
-		0x0fe0, 0x0fec, 0x1100, 0x1100,
-
-		0x110c, 0x1110, 0x112c, 0x112c, 0x1134, 0x113c,
-		0x1148, 0x1148, 0x1150, 0x116c, 0x11fc, 0x11fc,
-		0x15e0, 0x161c, 0x1724, 0x1724, 0x1740, 0x1740,
-		0x1804, 0x1810, 0x1818, 0x1824, 0x182c, 0x1838,
-		0x184c, 0x1850, 0x28a4, 0x28ac, 0x28bc, 0x28c4,
-		0x2900, 0x290c, 0x2914, 0x2914, 0x2938, 0x293c,
-		0x30b0, 0x30b0, 0x30c0, 0x30c0, 0x30e0, 0x30f0,
-		0x3100, 0x3100, 0x3110, 0x3110, 0x3200, 0x3218,
-		0x3220, 0x3250, 0x3264, 0x3268, 0x3290, 0x3294,
-		0x3400, 0x340c, 0x3418, 0x3418, 0x3420, 0x342c,
-		0x34d0, 0x34d4, 0x36b8, 0x3704, 0x3720, 0x3750,
-		0x3760, 0x3764, 0x3800, 0x3800, 0x3808, 0x3810,
-		0x385c, 0x3878, 0x3b00, 0x3b24, 0x3b2c, 0x3b30,
-		0x3b40, 0x3b40, 0x3b50, 0x3b5c, 0x3b80, 0x3b88,
-		0x3c04, 0x3c08, 0x3c30, 0x3c30, 0x3c38, 0x3c48,
-		0x3c98, 0x3ca8, 0x3cb0, 0x3cb0,
-
-		0x8000, 0x8008, 0x8018, 0x803c, 0x8200, 0x8208,
-		0x8400, 0x8424, 0x8430, 0x8450, 0x8600, 0x8610,
-		0x87d4, 0x87dc, 0x8800, 0x8820, 0x8a00, 0x8a0c,
-		0x8a4c, 0x8a50, 0x8c00, 0x8c20, 0x8c48, 0x8c48,
-		0x8c58, 0x8c74, 0x8c90, 0x8c98, 0x8e00, 0x8e0c,
-
-		0x9000, 0x9008, 0x9018, 0x903c, 0x9200, 0x9208,
-		0x9400, 0x9424, 0x9430, 0x9450, 0x9600, 0x9610,
-		0x97d4, 0x97dc, 0x9800, 0x9820, 0x9a00, 0x9a0c,
-		0x9a4c, 0x9a50, 0x9c00, 0x9c20, 0x9c48, 0x9c48,
-		0x9c58, 0x9c74, 0x9c90, 0x9c98, 0x9e00, 0x9e0c,
-
-		0x10000, 0x1000c, 0x12000, 0x12014,
-		0x12400, 0x12400, 0x12420, 0x12420
-	};
-
-	kgsl_dump_regs(device, "REG", reg_ranges, ARRAY_SIZE(reg_ranges) / 2);
-#endif
 }
 
 static void dump_ib(struct kgsl_device *device, char* buffId, uint32_t pt_base,
@@ -529,85 +463,6 @@ static void kgsl_dump_fields(struct kgsl_device *device,
 	}
 }
 
-static void kgsl_read_debug_regs(struct kgsl_device *device,
-				 unsigned int control,
-				 unsigned int data,
-				 int count, char *str, int len)
-{
-	int ret, i;
-	unsigned int r1;
-
-	for (i = 0; i < count; i++) {
-		kgsl_regwrite(device, control, i);
-		kgsl_regread(device, data, &r1);
-
-		ret = snprintf(str, len, "%08X ", r1);
-		str += ret;
-		len -= ret;
-	}
-}
-
-static void kgsl_leia_dump_debug(struct kgsl_device *device)
-{
-	char str[100];
-	int thread, reg;
-
-	if (device->chip_id != KGSL_CHIPID_LEIA_REV470)
-		return;
-
-	kgsl_read_debug_regs(device, REG_LEIA_PC_DEBUG_CNTL,
-			     REG_LEIA_PC_DEBUG_DATA, 8,
-			     str, sizeof(str));
-
-	KGSL_LOG_DUMP(device,  "PC_DEBUG: %s\n", str);
-
-	kgsl_read_debug_regs(device, REG_LEIA_RB_DEBUG_CNTL,
-			     REG_LEIA_RB_DEBUG_DATA, 7,
-			     str, sizeof(str));
-
-	KGSL_LOG_DUMP(device, "RB0_DEBUG: %s\n", str);
-
-	kgsl_read_debug_regs(device, REG_LEIA_RB_DEBUG_CNTL,
-			     REG_LEIA_RB1_DEBUG_DATA, 7,
-			     str, sizeof(str));
-
-	KGSL_LOG_DUMP(device, "RB1_DEBUG: %s\n", str);
-
-	kgsl_read_debug_regs(device, REG_LEIA_GRAS_DEBUG_CNTL,
-			     REG_LEIA_GRAS_DEBUG_DATA, 4,
-			     str, sizeof(str));
-
-	KGSL_LOG_DUMP(device, "GRAS_DEBUG: %s\n", str);
-
-	kgsl_read_debug_regs(device, REG_LEIA_SQ_DEBUG_TB_STATUS_SEL,
-			     REG_LEIA_SQ_DEBUG_VTX_TB_STATUS_REG, 8,
-			     str, sizeof(str));
-
-	KGSL_LOG_DUMP(device, "SQ_DEBUG: %s\n", str);
-
-	/* Read 8 registers for 8 threads */
-
-	for (thread = 0; thread < 8; thread++) {
-		int ret = 0;
-		unsigned int r1;
-
-		for (reg = 0; reg < 8; reg++) {
-			kgsl_regwrite(device, REG_LEIA_SQ_DEBUG_TB_STATUS_SEL,
-				      ((thread & 7) << 4) |
-				      (1 << 11) |
-				      ((reg & 7) << 7));
-
-			kgsl_regread(device,
-				     REG_LEIA_SQ_DEBUG_VTX_TB_STATUS_MEM, &r1);
-
-			ret += snprintf(str + ret, sizeof(str) - ret,
-					"%08X ", r1);
-		}
-
-		KGSL_LOG_DUMP(device, "   %d: %s\n", thread, str);
-	}
-}
-
 static int kgsl_dump_yamato(struct kgsl_device *device)
 {
 	unsigned int r1, r2, r3, rbbm_status;
@@ -811,15 +666,6 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	KGSL_LOG_DUMP(device,
 		"MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
 
-/*
-	kgsl_regread(device, REG_RB_DEPTHCONTROL, &r1);
-	KGSL_LOG_DUMP(device, "RB_DEPTHCONTROL: %08X \n", r1);
-
-	kgsl_leia_dump_debug(device);
-
-	if (device->ftbl.device_cmdstream_readtimestamp != NULL) {
-		ts_processed = device->ftbl.device_cmdstream_readtimestamp(
-*/
 	if (device->ftbl.device_readtimestamp != NULL) {
 		ts_processed = device->ftbl.device_readtimestamp(
 				device, KGSL_TIMESTAMP_RETIRED);
@@ -1013,10 +859,6 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 	}
 
 	KGSL_DRV_ERR(device, "Dump Finished\n");
-
-	hr_msleep(5000);
-
-	BUG_ON(true);
 
 	return 0;
 }

@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/types.h>
 #include <linux/device.h>
@@ -29,10 +24,6 @@
 
 #define GSL_PT_PAGE_BITS_MASK	0x00000007
 #define GSL_PT_PAGE_ADDR_MASK	PAGE_MASK
-
-/// HTC:
-#define MMU_MAP_WARNING_ALLOC_SIZE	(16 * 1024 * 1024)
-/// :HTC
 
 #define GSL_MMU_INT_MASK \
 	(MH_INTERRUPT_MASK__AXI_READ_ERROR | \
@@ -915,28 +906,25 @@ unsigned int kgsl_virtaddr_to_physaddr(void *virtaddr)
 	pte_t *pte_ptr = NULL, pte;
 
 	pgd_ptr = pgd_offset(current->mm, (unsigned long) virtaddr);
-
 	if (pgd_none(*pgd) || pgd_bad(*pgd)) {
 		KGSL_CORE_ERR("Invalid pgd entry\n");
-		goto done;
+		return 0;
 	}
 
 	pmd_ptr = pmd_offset(pgd_ptr, (unsigned long) virtaddr);
 	if (pmd_none(*pmd_ptr) || pmd_bad(*pmd_ptr)) {
 		KGSL_CORE_ERR("Invalid pmd entry\n");
-		goto done;
+		return 0;
 	}
 
 	pte_ptr = pte_offset_map(pmd_ptr, (unsigned long) virtaddr);
 	if (!pte_ptr) {
 		KGSL_CORE_ERR("pt_offset_map failed\n");
-		goto done;
+		return 0;
 	}
 	pte = *pte_ptr;
 	physaddr = pte_pfn(pte);
 	pte_unmap(pte_ptr);
-done:
-	spin_unlock(&current->mm->page_table_lock);
 	physaddr <<= PAGE_SHIFT;
 	return physaddr;
 }
