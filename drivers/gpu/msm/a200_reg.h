@@ -134,11 +134,6 @@ enum SURFACEFORMAT {
 	FMT_DXT3A_AS_1_1_1_1           = 61
 };
 
-#define REG_PERF_MODE_CNT	0x0
-#define REG_PERF_STATE_RESET	0x0
-#define REG_PERF_STATE_ENABLE	0x1
-#define REG_PERF_STATE_FREEZE	0x2
-
 #define RB_EDRAM_INFO_EDRAM_SIZE_SIZE                      4
 #define RB_EDRAM_INFO_EDRAM_MAPPING_MODE_SIZE              2
 #define RB_EDRAM_INFO_UNUSED0_SIZE                         8
@@ -324,15 +319,6 @@ union reg_cp_rb_cntl {
 #define REG_CP_ST_BASE                   0x044D
 #define REG_CP_ST_BUFSZ                  0x044E
 
-#define REG_CP_PERFMON_CNTL              0x0444
-#define REG_CP_PERFCOUNTER_SELECT        0x0445
-#define REG_CP_PERFCOUNTER_LO            0x0446
-#define REG_CP_PERFCOUNTER_HI            0x0447
-
-#define REG_RBBM_PERFCOUNTER1_SELECT     0x0395
-#define REG_RBBM_PERFCOUNTER1_HI         0x0398
-#define REG_RBBM_PERFCOUNTER1_LO         0x0397
-
 #define REG_MASTER_INT_SIGNAL            0x03B7
 
 #define REG_MH_ARBITER_CONFIG            0x0A40
@@ -389,11 +375,11 @@ union reg_cp_rb_cntl {
 #define REG_RBBM_SOFT_RESET              0x003C
 #define REG_RBBM_STATUS                  0x05D0
 
-#define REG_RB_DEPTHCONTROL              0x2200
 #define REG_RB_COLORCONTROL              0x2202
 #define REG_RB_COLOR_DEST_MASK           0x2326
 #define REG_RB_COLOR_MASK                0x2104
 #define REG_RB_COPY_CONTROL              0x2318
+#define REG_RB_DEPTHCONTROL              0x2200
 #define REG_RB_EDRAM_INFO                0x0F02
 #define REG_RB_MODECONTROL               0x2208
 #define REG_RB_SURFACE_INFO              0x2000

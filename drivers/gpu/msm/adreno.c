@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/delay.h>
 #include <linux/uaccess.h>
@@ -113,13 +108,6 @@ static struct kgsl_yamato_device yamato_device = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_3D0_REG_MEMORY,
-		.display_off = {
-#ifdef CONFIG_HAS_EARLYSUSPEND
-			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
-			.suspend = kgsl_early_suspend_driver,
-			.resume = kgsl_late_resume_driver,
-#endif
-		},
 	},
 	.gmemspace = {
 		.gpu_base = 0,
@@ -253,15 +241,10 @@ irqreturn_t kgsl_yamato_isr(int irq, void *data)
 		result = IRQ_HANDLED;
 	}
 
-	if (device->requested_state == KGSL_STATE_NONE) {
-		if (device->pwrctrl.nap_allowed == true) {
-			device->requested_state = KGSL_STATE_NAP;
-			queue_work(device->work_queue, &device->idle_check_ws);
-		} else if (device->pwrctrl.idle_pass == true) {
-			queue_work(device->work_queue, &device->idle_check_ws);
-		}
+	if (device->pwrctrl.nap_allowed == true) {
+		device->requested_state = KGSL_STATE_NAP;
+		schedule_work(&device->idle_check_ws);
 	}
-
 	/* Reset the time-out in our idle timer */
 	mod_timer(&device->idle_timer,
 		jiffies + device->pwrctrl.interval_timeout);
@@ -1146,18 +1129,15 @@ static int kgsl_check_interrupt_timestamp(struct kgsl_device *device,
 }
 
 /*
- wait_event_interruptible_timeout checks for the exit condition before
+ wait_io_event_interruptible_timeout checks for the exit condition before
  placing a process in wait q. For conditional interrupts we expect the
  process to already be in its wait q when its exit condition checking
  function is called.
 */
-#define kgsl_wait_event_interruptible_timeout(wq, condition, timeout, io)\
+#define kgsl_wait_io_event_interruptible_timeout(wq, condition, timeout)\
 ({									\
 	long __ret = timeout;						\
-	if (io)						\
-		__wait_io_event_interruptible_timeout(wq, condition, __ret);\
-	else						\
-		__wait_event_interruptible_timeout(wq, condition, __ret);\
+	__wait_io_event_interruptible_timeout(wq, condition, __ret);	\
 	__ret;								\
 })
 
@@ -1167,9 +1147,6 @@ static int kgsl_yamato_waittimestamp(struct kgsl_device *device,
 				unsigned int msecs)
 {
 	long status = 0;
-	uint io = 1;
-	static uint io_cnt;
-	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
 	struct kgsl_yamato_device *yamato_device = KGSL_YAMATO_DEVICE(device);
 
 	if (timestamp != yamato_device->ringbuffer.timestamp &&
@@ -1182,17 +1159,13 @@ static int kgsl_yamato_waittimestamp(struct kgsl_device *device,
 		goto done;
 	}
 	if (!kgsl_check_timestamp(device, timestamp)) {
-		io_cnt = (io_cnt + 1) % 100;
-		if (io_cnt < pwr->pwrlevels[pwr->active_pwrlevel].io_fraction)
-			io = 0;
 		mutex_unlock(&device->mutex);
 		/* We need to make sure that the process is placed in wait-q
 		 * before its condition is called */
-		status = kgsl_wait_event_interruptible_timeout(
+		status = kgsl_wait_io_event_interruptible_timeout(
 				device->wait_queue,
 				kgsl_check_interrupt_timestamp(device,
-					timestamp),
-				msecs_to_jiffies(msecs), io);
+					timestamp), msecs_to_jiffies(msecs));
 		mutex_lock(&device->mutex);
 
 		if (status > 0)
@@ -1274,55 +1247,6 @@ static long kgsl_yamato_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
-static inline s64 kgsl_yamato_ticks_to_us(u32 ticks, u32 gpu_freq)
-{
-	gpu_freq /= 1000000;
-	return ticks / gpu_freq;
-}
-
-static void kgsl_yamato_power_stats(struct kgsl_device *device,
-				struct kgsl_power_stats *stats)
-{
-	unsigned int reg;
-	struct kgsl_pwrctrl *pwr = &device->pwrctrl;
-
-	/* In order to calculate idle you have to have run the algorithm *
-	 * at least once to get a start time. */
-	if (pwr->time != 0) {
-		s64 tmp;
-		/* Stop the performance moniter and read the current *
-		 * busy cycles. */
-		kgsl_yamato_regwrite(device,
-					REG_CP_PERFMON_CNTL,
-					REG_PERF_MODE_CNT |
-					REG_PERF_STATE_FREEZE);
-		kgsl_yamato_regread(device, REG_RBBM_PERFCOUNTER1_LO, &reg);
-		tmp = ktime_to_us(ktime_get());
-		stats->total_time = tmp - pwr->time;
-		pwr->time = tmp;
-		stats->busy_time  = kgsl_yamato_ticks_to_us(reg,
-				device->pwrctrl.
-				pwrlevels[device->pwrctrl.active_pwrlevel].
-				gpu_freq);
-		kgsl_yamato_regwrite(device,
-					REG_CP_PERFMON_CNTL,
-					REG_PERF_MODE_CNT |
-					REG_PERF_STATE_RESET);
-	} else {
-		stats->total_time = 0;
-		stats->busy_time = 0;
-		pwr->time = ktime_to_us(ktime_get());
-	}
-
-	/* re-enable the performance moniters */
-	kgsl_yamato_regread(device, REG_RBBM_PM_OVERRIDE2, &reg);
-	kgsl_yamato_regwrite(device, REG_RBBM_PM_OVERRIDE2, (reg | 0x40));
-	kgsl_yamato_regwrite(device, REG_RBBM_PERFCOUNTER1_SELECT, 0x1);
-	kgsl_yamato_regwrite(device,
-				REG_CP_PERFMON_CNTL,
-				REG_PERF_MODE_CNT | REG_PERF_STATE_ENABLE);
-}
-
 static void __devinit kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 {
 	if (ftbl == NULL)
@@ -1347,7 +1271,6 @@ static void __devinit kgsl_yamato_getfunctable(struct kgsl_functable *ftbl)
 	ftbl->device_ioctl = kgsl_yamato_ioctl;
 	ftbl->device_setup_pt = kgsl_yamato_setup_pt;
 	ftbl->device_cleanup_pt = kgsl_yamato_cleanup_pt;
-	ftbl->device_power_stats = kgsl_yamato_power_stats;
 }
 
 static struct platform_device_id kgsl_3d_id_table[] = {

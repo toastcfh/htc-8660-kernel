@@ -152,7 +152,7 @@ kgsl_g12_cmdstream_issueibcmds(struct kgsl_device_private *dev_priv,
 			uint32_t *timestamp,
 			unsigned int ctrl)
 {
-	int result = 0;
+	unsigned int result = 0;
 	unsigned int ofs        = PACKETSIZE_STATESTREAM * sizeof(unsigned int);
 	unsigned int cnt        = 5;
 	unsigned int nextaddr   = 0;
@@ -197,7 +197,7 @@ kgsl_g12_cmdstream_issueibcmds(struct kgsl_device_private *dev_priv,
 	result = wait_event_interruptible_timeout(device->wait_queue,
 				  room_in_rb(g12_device),
 				  msecs_to_jiffies(KGSL_TIMEOUT_DEFAULT));
-	if (result <= 0) {
+	if (result < 0) {
 		KGSL_CMD_ERR(device, "wait_event_interruptible_timeout "
 			"failed: %d\n", result);
 		goto error;

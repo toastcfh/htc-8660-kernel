@@ -38,7 +38,7 @@
 #include <linux/cdev.h>
 #include <linux/regulator/consumer.h>
 
-#include <linux/atomic.h>
+//#include <linux/atomic.h>
 
 #include "kgsl_device.h"
 #include "kgsl_pwrctrl.h"
@@ -87,7 +87,6 @@ KGSL_PAGETABLE_ENTRY_SIZE, PAGE_SIZE)
 #else
 #define KGSL_PAGETABLE_COUNT 1
 #endif
-extern int kgsl_pagetable_count;
 
 /* Casting using container_of() for structures that kgsl owns. */
 #define KGSL_CONTAINER_OF(ptr, type, member) \
@@ -130,13 +129,7 @@ struct kgsl_driver {
 	/* Mutex for protecting the device list */
 	struct mutex devlock;
 
-	struct {
-		unsigned long *bitmap;
-		int entries;
-		spinlock_t lock;
-		void *hostptr;
-		unsigned int physaddr;
-	} ptpool;
+	struct kgsl_ptpool ptpool;
 
 	struct {
 		unsigned int vmalloc;
@@ -223,8 +216,6 @@ extern const struct dev_pm_ops kgsl_pm_ops;
 
 int kgsl_suspend_driver(struct platform_device *pdev, pm_message_t state);
 int kgsl_resume_driver(struct platform_device *pdev);
-void kgsl_early_suspend_driver(struct early_suspend *h);
-void kgsl_late_resume_driver(struct early_suspend *h);
 
 #ifdef CONFIG_MSM_KGSL_DRM
 extern int kgsl_drm_init(struct platform_device *dev);

@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 
 #include <linux/delay.h>
@@ -111,7 +106,7 @@ static int kgsl_hex_dump(const char *prefix, int c, uint8_t *data,
 	ss = snprintf(linebuf, sizeof(linebuf), prefix, c);
 	hex_dump_to_buffer(data, linec, rowc, 4, linebuf+ss,
 		sizeof(linebuf)-ss, 0);
-	strncat(linebuf, "\n", sizeof(linebuf) - 1);
+	strncat(linebuf, "\n", sizeof(linebuf));
 	linebuf[sizeof(linebuf)-1] = 0;
 	ss = strlen(linebuf);
 	if (copy_to_user(buff, linebuf, ss+1))

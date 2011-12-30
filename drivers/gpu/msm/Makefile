@@ -1,6 +1,6 @@
 ccflags-y := -Iinclude/drm
 
-msm_kgsl-y = \
+msm_kgsl_core-$(CONFIG_MSM_KGSL) = \
 	kgsl.o \
 	kgsl_sharedmem.o \
 	kgsl_pwrctrl.o
@@ -27,4 +27,3 @@ msm_z180-objs = $(msm_z180-y)
 obj-$(CONFIG_MSM_KGSL) += msm_kgsl_core.o
 obj-$(CONFIG_MSM_KGSL) += msm_adreno.o
 obj-$(CONFIG_MSM_KGSL_2D) += msm_z180.o
-

@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/uaccess.h>
 
@@ -167,13 +162,6 @@ static struct kgsl_g12_device device_2d0 = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_2D0_REG_MEMORY,
-		.display_off = {
-#ifdef CONFIG_HAS_EARLYSUSPEND
-			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
-			.suspend = kgsl_early_suspend_driver,
-			.resume = kgsl_late_resume_driver,
-#endif
-		},
 	},
 };
 
@@ -214,13 +202,6 @@ static struct kgsl_g12_device device_2d1 = {
 		.state = KGSL_STATE_INIT,
 		.active_cnt = 0,
 		.iomemname = KGSL_2D1_REG_MEMORY,
-		.display_off = {
-#ifdef CONFIG_HAS_EARLYSUSPEND
-			.level = EARLY_SUSPEND_LEVEL_STOP_DRAWING,
-			.suspend = kgsl_early_suspend_driver,
-			.resume = kgsl_late_resume_driver,
-#endif
-		},
 	},
 };
 
@@ -262,12 +243,10 @@ static irqreturn_t kgsl_g12_isr(int irq, void *data)
 		}
 	}
 
-	if ((device->pwrctrl.nap_allowed == true) &&
-		(device->requested_state == KGSL_STATE_NONE)) {
+	if (device->pwrctrl.nap_allowed == true) {
 		device->requested_state = KGSL_STATE_NAP;
-		queue_work(device->work_queue, &device->idle_check_ws);
+		schedule_work(&device->idle_check_ws);
 	}
-
 	mod_timer(&device->idle_timer,
 			jiffies + device->pwrctrl.interval_timeout);
 
@@ -1011,16 +990,6 @@ static long kgsl_g12_ioctl(struct kgsl_device_private *dev_priv,
 
 }
 
-/*
-static void kgsl_g12_power_stats(struct kgsl_device *device,
-				struct kgsl_power_stats *stats)
-{
-	stats->total_time = 0;
-	stats->busy_time = 0;
-}
-
-static void kgsl_g12_getfunctable(struct kgsl_functable *ftbl)
-*/
 static void __devinit kgsl_g12_getfunctable(struct kgsl_functable *ftbl)
 {
 	if (ftbl == NULL)
@@ -1045,7 +1014,6 @@ static void __devinit kgsl_g12_getfunctable(struct kgsl_functable *ftbl)
 	ftbl->device_ioctl = kgsl_g12_ioctl;
 	ftbl->device_setup_pt = kgsl_g12_setup_pt;
 	ftbl->device_cleanup_pt = kgsl_g12_cleanup_pt;
-	ftbl->device_power_stats = kgsl_g12_power_stats;
 }
 
 static struct platform_device_id kgsl_2d_id_table[] = {

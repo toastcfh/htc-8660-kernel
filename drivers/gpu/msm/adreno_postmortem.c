@@ -9,26 +9,11 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 
 #include <linux/vmalloc.h>
 
 #include "kgsl.h"
-/*
-#include "kgsl_device.h"
-#include "kgsl_cmdstream.h"
-#include "kgsl_log.h"
-#include "kgsl_postmortem.h"
-#include "kgsl_pm4types.h"
-#include "yamato_reg.h"
-#include "kgsl_yamato.h"
-#include "kgsl_yamato_debugfs.h"
-*/
 
 #include "adreno.h"
 #include "adreno_pm4types.h"
@@ -681,15 +666,6 @@ static int kgsl_dump_yamato(struct kgsl_device *device)
 	KGSL_LOG_DUMP(device,
 		"MH_INTERRUPT: MASK = %08X | STATUS   = %08X\n", r1, r2);
 
-/*
-	kgsl_regread(device, REG_RB_DEPTHCONTROL, &r1);
-	KGSL_LOG_DUMP(device, "RB_DEPTHCONTROL: %08X \n", r1);
-
-	kgsl_leia_dump_debug(device);
-
-	if (device->ftbl.device_cmdstream_readtimestamp != NULL) {
-		ts_processed = device->ftbl.device_cmdstream_readtimestamp(
-*/
 	if (device->ftbl.device_readtimestamp != NULL) {
 		ts_processed = device->ftbl.device_readtimestamp(
 				device, KGSL_TIMESTAMP_RETIRED);
@@ -883,10 +859,6 @@ int kgsl_postmortem_dump(struct kgsl_device *device, int manual)
 	}
 
 	KGSL_DRV_ERR(device, "Dump Finished\n");
-	//sleep for keep log
-	hr_msleep(5000);
-	/* aleays bug on */
-	BUG_ON(true);
 
 	return 0;
 }

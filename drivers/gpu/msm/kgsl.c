@@ -9,11 +9,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
- *
  */
 #include <linux/fb.h>
 #include <linux/file.h>
@@ -33,12 +28,10 @@
 #include "kgsl_debugfs.h"
 #include "kgsl_cffdump.h"
 
-static struct dentry *kgsl_debugfs_dir;
-
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "kgsl."
 
-int kgsl_pagetable_count = KGSL_PAGETABLE_COUNT;
+static int kgsl_pagetable_count = KGSL_PAGETABLE_COUNT;
 module_param_named(ptcount, kgsl_pagetable_count, int, 0);
 MODULE_PARM_DESC(kgsl_pagetable_count,
 "Minimum number of pagetables for KGSL to allocate at initialization time");
@@ -215,8 +208,7 @@ static void kgsl_memqueue_drain_unlocked(struct kgsl_device *device)
 static void kgsl_check_idle_locked(struct kgsl_device *device)
 {
 	if (device->pwrctrl.nap_allowed == true &&
-	    device->state == KGSL_STATE_ACTIVE &&
-		device->requested_state == KGSL_STATE_NONE) {
+	    device->state & KGSL_STATE_ACTIVE) {
 		device->requested_state = KGSL_STATE_NAP;
 		if (kgsl_pwrctrl_sleep(device) != 0)
 			mod_timer(&device->idle_timer,
@@ -323,7 +315,6 @@ static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 {
 	int status = -EINVAL;
 	unsigned int nap_allowed_saved;
-	unsigned int idle_pass_saved;
 
 	if (!device)
 		return -EINVAL;
@@ -333,8 +324,6 @@ static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 	mutex_lock(&device->mutex);
 	nap_allowed_saved = device->pwrctrl.nap_allowed;
 	device->pwrctrl.nap_allowed = false;
-	idle_pass_saved = device->pwrctrl.idle_pass;
-	device->pwrctrl.idle_pass = false;
 	device->requested_state = KGSL_STATE_SUSPEND;
 	/* Make sure no user process is waiting for a timestamp *
 	 * before supending */
@@ -368,7 +357,6 @@ static int kgsl_suspend_device(struct kgsl_device *device, pm_message_t state)
 	}
 	device->requested_state = KGSL_STATE_NONE;
 	device->pwrctrl.nap_allowed = nap_allowed_saved;
-	device->pwrctrl.idle_pass = idle_pass_saved;
 	status = 0;
 
 end:
@@ -388,7 +376,6 @@ static int kgsl_resume_device(struct kgsl_device *device)
 	mutex_lock(&device->mutex);
 	if (device->state == KGSL_STATE_SUSPEND) {
 		device->requested_state = KGSL_STATE_ACTIVE;
-		kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
 		status = device->ftbl.device_start(device, 0);
 		if (status == 0) {
 			device->state = KGSL_STATE_ACTIVE;
@@ -409,7 +396,6 @@ static int kgsl_resume_device(struct kgsl_device *device)
 
 end:
 	mutex_unlock(&device->mutex);
-	kgsl_check_idle(device);
 	KGSL_PWR_WARN(device, "resume end\n");
 	return status;
 }
@@ -446,16 +432,6 @@ const struct dev_pm_ops kgsl_pm_ops = {
 };
 EXPORT_SYMBOL(kgsl_pm_ops);
 
-void kgsl_early_suspend_driver(struct early_suspend *h)
-{
-	struct kgsl_device *device = container_of(h,
-					struct kgsl_device, display_off);
-	mutex_lock(&device->mutex);
-	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_NOMINAL);
-	mutex_unlock(&device->mutex);
-}
-EXPORT_SYMBOL(kgsl_early_suspend_driver);
-
 int kgsl_suspend_driver(struct platform_device *pdev,
 					pm_message_t state)
 {
@@ -470,16 +446,6 @@ int kgsl_resume_driver(struct platform_device *pdev)
 	return kgsl_resume_device(device);
 }
 EXPORT_SYMBOL(kgsl_resume_driver);
-
-void kgsl_late_resume_driver(struct early_suspend *h)
-{
-	struct kgsl_device *device = container_of(h,
-					struct kgsl_device, display_off);
-	mutex_lock(&device->mutex);
-	kgsl_pwrctrl_pwrlevel_change(device, KGSL_PWRLEVEL_TURBO);
-	mutex_unlock(&device->mutex);
-}
-EXPORT_SYMBOL(kgsl_late_resume_driver);
 
 /* file operations */
 static struct kgsl_process_private *
@@ -1104,12 +1070,25 @@ static long kgsl_ioctl_sharedmem_free(struct kgsl_device_private *dev_priv,
 static struct vm_area_struct *kgsl_get_vma_from_start_addr(unsigned int addr)
 {
 	struct vm_area_struct *vma;
+	int len;
 
 	down_read(&current->mm->mmap_sem);
 	vma = find_vma(current->mm, addr);
 	up_read(&current->mm->mmap_sem);
-	if (!vma)
+	if (!vma) {
 		KGSL_CORE_ERR("find_vma(%x) failed\n", addr);
+		return NULL;
+	}
+	len = vma->vm_end - vma->vm_start;
+	if (vma->vm_pgoff || !KGSL_IS_PAGE_ALIGNED(len) ||
+	  !KGSL_IS_PAGE_ALIGNED(vma->vm_start)) {
+		KGSL_CORE_ERR("address %x is not aligned\n", addr);
+		return NULL;
+	}
+	if (vma->vm_start != addr) {
+		KGSL_CORE_ERR("vma address does not match mmap address\n");
+		return NULL;
+	}
 	return vma;
 }
 
@@ -1140,7 +1119,6 @@ kgsl_ioctl_sharedmem_from_vmalloc(struct kgsl_device_private *dev_priv,
 		result = -EINVAL;
 		goto error;
 	}
-
 	len = vma->vm_end - vma->vm_start;
 	if (len == 0) {
 		KGSL_CORE_ERR("Invalid vma region length %d\n", len);
@@ -1899,7 +1877,7 @@ err_devlist:
 EXPORT_SYMBOL(kgsl_register_device);
 
 int kgsl_device_platform_probe(struct kgsl_device *device,
-				irqreturn_t (*dev_isr) (int, void*))
+			       irqreturn_t (*dev_isr) (int, void*))
 {
 	int status = -EINVAL;
 	struct kgsl_memregion *regspace = NULL;
@@ -1960,6 +1938,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device,
 		device->id, regspace->mmio_phys_base,
 		regspace->sizebytes, regspace->mmio_virt_base);
 
+
 	status = kgsl_register_device(device);
 	if (!status)
 		return status;
@@ -1993,7 +1972,6 @@ void kgsl_device_platform_remove(struct kgsl_device *device)
 	kgsl_pwrctrl_close(device);
 
 	pm_runtime_disable(&device->pdev->dev);
-
 }
 EXPORT_SYMBOL(kgsl_device_platform_remove);
 
