@@ -16,7 +16,6 @@
 #include "kgsl.h"
 #include "kgsl_pwrscale.h"
 
-#define GPU_SWFI_LATENCY	3
 
 void kgsl_pwrctrl_pwrlevel_change(struct kgsl_device *device,
 				unsigned int new_level)
@@ -602,8 +601,6 @@ clk_off:
 	device->state = device->requested_state;
 	device->requested_state = KGSL_STATE_NONE;
 	wake_unlock(&device->idle_wakelock);
-	pm_qos_update_request(&device->pm_qos_req_dma,
-				PM_QOS_DEFAULT_VALUE);
 	KGSL_PWR_WARN(device, "state -> NAP/SLEEP(%d), device %d\n",
 				  device->state, device->id);
 
@@ -636,7 +633,6 @@ void kgsl_pwrctrl_wake(struct kgsl_device *device)
 				jiffies + device->pwrctrl.interval_timeout);
 
 	wake_lock(&device->idle_wakelock);
-	pm_qos_update_request(&device->pm_qos_req_dma, GPU_SWFI_LATENCY);
 	KGSL_PWR_INFO(device, "wake return for device %d\n", device->id);
 }
 EXPORT_SYMBOL(kgsl_pwrctrl_wake);
