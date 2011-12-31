@@ -29,7 +29,6 @@
 #include "adreno_postmortem.h"
 
 #include "a2xx_reg.h"
-#include "kgsl_mmu.h"
 
 #define DRIVER_VERSION_MAJOR   3
 #define DRIVER_VERSION_MINOR   1
@@ -208,7 +207,7 @@ static void adreno_cleanup_pt(struct kgsl_device *device,
 
 	kgsl_mmu_unmap(pagetable, &device->memstore);
 
-	kgsl_mmu_unmap(pagetable, &device->mmu.setstate_memory);
+	kgsl_mmu_unmap(pagetable, &device->mmu.dummyspace);
 }
 
 static int adreno_setup_pt(struct kgsl_device *device,
@@ -233,7 +232,7 @@ static int adreno_setup_pt(struct kgsl_device *device,
 	if (result)
 		goto unmap_memptrs_desc;
 
-	result = kgsl_mmu_map_global(pagetable, &device->mmu.setstate_memory,
+	result = kgsl_mmu_map_global(pagetable, &device->mmu.dummyspace,
 				     GSL_PT_PAGE_RV | GSL_PT_PAGE_WV);
 	if (result)
 		goto unmap_memstore_desc;
@@ -253,8 +252,7 @@ error:
 	return result;
 }
 
-static void adreno_setstate(struct kgsl_device *device,
-					uint32_t flags)
+static void adreno_setstate(struct kgsl_device *device, uint32_t flags)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
 	unsigned int link[32];
@@ -262,9 +260,13 @@ static void adreno_setstate(struct kgsl_device *device,
 	int sizedwords = 0;
 	unsigned int mh_mmu_invalidate = 0x00000003; /*invalidate all and tc */
 
+	if (!kgsl_mmu_enabled() || !flags)
+		return;
+
 	/* If possible, then set the state via the command stream to avoid
 	   a CPU idle.  Otherwise, use the default setstate which uses register
 	   writes */
+
 	if (adreno_dev->drawctxt_active) {
 		if (flags & KGSL_MMUFLAGS_PTUPDATE) {
 			/* wait for graphics pipe to be idle */
@@ -273,8 +275,7 @@ static void adreno_setstate(struct kgsl_device *device,
 
 			/* set page table base */
 			*cmds++ = cp_type0_packet(MH_MMU_PT_BASE, 1);
-			*cmds++ = kgsl_pt_get_base_addr(
-					device->mmu.hwpagetable);
+			*cmds++ = device->mmu.hwpagetable->base.gpuaddr;
 			sizedwords += 4;
 		}
 
@@ -309,14 +310,13 @@ static void adreno_setstate(struct kgsl_device *device,
 				(REG_PA_SU_SC_MODE_CNTL - 0x2000);
 			*cmds++ = 0;	  /* disable faceness generation */
 			*cmds++ = cp_type3_packet(CP_SET_BIN_BASE_OFFSET, 1);
-			*cmds++ = device->mmu.setstate_memory.gpuaddr;
+			*cmds++ = device->mmu.dummyspace.gpuaddr;
 			*cmds++ = cp_type3_packet(CP_DRAW_INDX_BIN, 6);
 			*cmds++ = 0;	  /* viz query info */
 			*cmds++ = 0x0003C004; /* draw indicator */
 			*cmds++ = 0;	  /* bin base */
 			*cmds++ = 3;	  /* bin size */
-			*cmds++ =
-			device->mmu.setstate_memory.gpuaddr; /* dma base */
+			*cmds++ = device->mmu.dummyspace.gpuaddr; /* dma base */
 			*cmds++ = 6;	  /* dma size */
 			*cmds++ = cp_type3_packet(CP_DRAW_INDX_BIN, 6);
 			*cmds++ = 0;	  /* viz query info */
@@ -324,13 +324,12 @@ static void adreno_setstate(struct kgsl_device *device,
 			*cmds++ = 0;	  /* bin base */
 			*cmds++ = 3;	  /* bin size */
 			/* dma base */
-			*cmds++ = device->mmu.setstate_memory.gpuaddr;
+			*cmds++ = device->mmu.dummyspace.gpuaddr;
 			*cmds++ = 6;	  /* dma size */
 			*cmds++ = cp_type3_packet(CP_WAIT_FOR_IDLE, 1);
 			*cmds++ = 0x00000000;
 			sizedwords += 21;
 		}
-
 
 		if (flags & (KGSL_MMUFLAGS_PTUPDATE | KGSL_MMUFLAGS_TLBFLUSH)) {
 			*cmds++ = cp_type3_packet(CP_INVALIDATE_STATE, 1);
@@ -340,9 +339,8 @@ static void adreno_setstate(struct kgsl_device *device,
 
 		adreno_ringbuffer_issuecmds(device, KGSL_CMD_FLAGS_PMODE,
 					&link[0], sizedwords);
-	} else {
-		kgsl_mmu_device_setstate(device, flags);
-	}
+	} else
+		kgsl_default_setstate(device, flags);
 }
 
 static unsigned int
@@ -797,13 +795,16 @@ static int adreno_getproperty(struct kgsl_device *device,
 		break;
 	case KGSL_PROP_MMU_ENABLE:
 		{
-			int mmu_prop = kgsl_mmu_enabled();
-
+#ifdef CONFIG_MSM_KGSL_MMU
+			int mmuProp = 1;
+#else
+			int mmuProp = 0;
+#endif
 			if (sizebytes != sizeof(int)) {
 				status = -EINVAL;
 				break;
 			}
-			if (copy_to_user(value, &mmu_prop, sizeof(mmu_prop))) {
+			if (copy_to_user(value, &mmuProp, sizeof(mmuProp))) {
 				status = -EFAULT;
 				break;
 			}
@@ -940,8 +941,12 @@ uint8_t *kgsl_sharedmem_convertaddr(struct kgsl_device *device,
 
 	mutex_lock(&kgsl_driver.process_mutex);
 	list_for_each_entry(priv, &kgsl_driver.process_list, list) {
-		if (!kgsl_mmu_pt_equal(priv->pagetable, pt_base))
+		if (pt_base != 0
+			&& priv->pagetable
+			&& priv->pagetable->base.gpuaddr != pt_base) {
 			continue;
+		}
+
 		spin_lock(&priv->mem_lock);
 		entry = kgsl_sharedmem_find_region(priv, gpuaddr,
 						sizeof(unsigned int));
