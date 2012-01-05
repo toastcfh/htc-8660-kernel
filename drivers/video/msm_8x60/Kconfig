@@ -1,4 +1,4 @@
-source "drivers/video/msm_8x60/gpu/kgsl_adreno220/Kconfig"
+source "drivers/gpu/msm/Kconfig"
 source "drivers/video/msm_8x60/vidc/Kconfig"
 source "drivers/video/msm_8x60/sii9234/Kconfig"
 config FB_MSM

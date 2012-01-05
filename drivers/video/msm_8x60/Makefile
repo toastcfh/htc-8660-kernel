@@ -140,13 +140,7 @@ obj-$(CONFIG_FB_MSM_EXTMDDI_SVGA) += mddi_ext_lcd.o
 
 # Yamato GL driver
 ifeq ($(CONFIG_GPU_MSM_KGSL_ADRENO220),y)
-
-ifeq ($(CONFIG_MSM_KGSL_HC_MR1),y)
-obj-$(CONFIG_GPU_MSM_KGSL) += gpu/kgsl_hc_mr1/
-else
 obj-$(CONFIG_GPU_MSM_KGSL) += gpu/kgsl_adreno220/
-endif
-
 endif
 
 obj-$(CONFIG_VIDC_1080P) += vidc/
