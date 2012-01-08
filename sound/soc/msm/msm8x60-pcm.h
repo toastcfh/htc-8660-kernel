@@ -18,17 +18,11 @@
 
 #ifndef _MSM_PCM_H
 #define _MSM_PCM_H
-#ifdef CONFIG_MSM8X60_AUDIO_LTE
-#include <mach/qdsp6v3/apr_audio.h>
-#include <mach/qdsp6v3/q6asm.h>
-#else
 #include <mach/qdsp6v2/apr_audio.h>
 #include <mach/qdsp6v2/q6asm.h>
-#endif
 
 #define MAX_PLAYBACK_SESSIONS	2
 #define MAX_CAPTURE_SESSIONS	1
-#define MAX_COPP               12
 
 extern int copy_count;
 
@@ -49,6 +43,7 @@ struct buffer_rec {
 struct audio_locks {
 	wait_queue_head_t read_wait;
 	wait_queue_head_t write_wait;
+	wait_queue_head_t wait;
 	wait_queue_head_t eos_wait;
 	wait_queue_head_t enable_wait;
 };
@@ -75,26 +70,19 @@ struct msm_audio {
 	int abort; /* set when error, like sample rate mismatch */
 
 	int enabled;
-	int close_ack;
+	int eos_ack;
 	int cmd_ack;
 	atomic_t start;
 	atomic_t out_count;
 	atomic_t in_count;
-	atomic_t out_needed;
 	int periods;
-	int mmap_flag;
 };
-#ifdef CONFIG_MSM8X60_AUDIO_LTE
+
 struct pcm_session {
-	unsigned int playback_session[MAX_PLAYBACK_SESSIONS][MAX_COPP];
-	unsigned int capture_session[MAX_CAPTURE_SESSIONS][MAX_COPP];
+	unsigned char playback_session[MAX_PLAYBACK_SESSIONS];
+	unsigned char capture_session[MAX_CAPTURE_SESSIONS];
 };
-#else
-struct pcm_session {
-	unsigned short playback_session[MAX_PLAYBACK_SESSIONS][MAX_COPP];
-	unsigned short capture_session[MAX_CAPTURE_SESSIONS][MAX_COPP];
-};
-#endif
+
 /* platform data */
 extern struct snd_soc_platform msm_soc_platform;
 extern struct snd_soc_dai msm_dais[2];

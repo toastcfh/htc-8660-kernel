@@ -47,7 +47,7 @@
 #define LOOPBACK_ENABLE         0x1
 #define LOOPBACK_DISABLE        0x0
 
-#include "msm8x60-pcm.h"
+#include "msm8x60-pcm-lte.h"
 
 static struct platform_device *msm_audio_snd_device;
 struct audio_locks the_locks;

@@ -29,8 +29,13 @@ obj-$(CONFIG_SND_QSD_SOC_QSD8K) += snd-soc-qsd8k.o
 snd-soc-msm8x60-dai-objs := msm8x60-dai.o
 obj-$(CONFIG_SND_SOC_MSM8X60_DAI) += snd-soc-msm8x60-dai.o
 
+ifndef CONFIG_MSM8X60_AUDIO_LTE
 snd-soc-msm8x60-pcm-objs := msm8x60-pcm.o
 obj-$(CONFIG_SND_SOC_MSM8X60_PCM) += snd-soc-msm8x60-pcm.o
+else
+snd-soc-msm8x60-pcm-objs := msm8x60-pcm-lte.o
+obj-$(CONFIG_SND_SOC_MSM8X60_PCM) += snd-soc-msm8x60-pcm.o
+endif
 
 snd-soc-msm8x60-objs := msm8x60.o
 obj-$(CONFIG_SND_SOC_MSM8X60) += snd-soc-msm8x60.o
