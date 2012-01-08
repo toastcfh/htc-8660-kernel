@@ -1,7 +1,3 @@
-#ifdef CONFIG_MACH_RUBY
-#include "atmel_ruby.c"
-#else
-
 /* drivers/input/touchscreen/atmel.c - ATMEL Touch driver
  *
  * Copyright (C) 2009 HTC Corporation.
@@ -1848,6 +1844,4 @@ module_exit(atmel_ts_exit);
 
 MODULE_DESCRIPTION("ATMEL Touch driver");
 MODULE_LICENSE("GPL");
-
-#endif
 
