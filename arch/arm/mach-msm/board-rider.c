@@ -124,6 +124,7 @@
 #include <mach/rpc_hsusb.h>
 #include <mach/cable_detect.h>
 #include "rpm_stats.h"
+#include "acpuclock.h"
 
 #ifdef CONFIG_PERFLOCK
 #include <mach/perflock.h>
@@ -284,7 +285,8 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	},
 };
 
-static struct msm_acpu_clock_platform_data msm8x60_acpu_clock_data = {
+static struct acpuclk_platform_data msm8x60_acpuclk_data __initdata = {
+	.init = acpuclk_8x60_init,
 };
 
 #ifdef CONFIG_PERFLOCK
@@ -5289,7 +5291,7 @@ static void __init rider_init(void)
 
 	platform_add_devices(early_devices, ARRAY_SIZE(early_devices));
 	/* CPU frequency control is not supported on simulated targets. */
-	msm_acpu_clock_init(&msm8x60_acpu_clock_data);
+	acpuclk_init(&msm8x60_acpuclk_data);
 
 #ifdef CONFIG_PERFLOCK
 	perflock_init(&holiday_perflock_data);

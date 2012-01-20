@@ -119,9 +119,6 @@ static struct clock_state {
 	struct clkctl_l2_speed		*current_l2_speed;
 	spinlock_t			l2_lock;
 	struct mutex			lock;
-	uint32_t			acpu_switch_time_us;
-	uint32_t			vdd_switch_time_us;
-	uint32_t			max_speed_delta_khz;
 } drv_state;
 
 struct clkctl_l2_speed {
@@ -322,14 +319,9 @@ static struct clkctl_acpu_speed *acpu_freq_tbl;
 static struct clkctl_l2_speed *l2_freq_tbl = l2_freq_tbl_v2;
 static unsigned int l2_freq_tbl_size = ARRAY_SIZE(l2_freq_tbl_v2);
 
-unsigned long acpuclk_get_rate(int cpu)
+static unsigned long acpuclk_8x60_get_rate(int cpu)
 {
 	return drv_state.current_speed[cpu]->acpuclk_khz;
-}
-
-uint32_t acpuclk_get_switch_time(void)
-{
-	return drv_state.acpu_switch_time_us;
 }
 
 unsigned long clk_get_max_axi_khz(void)
@@ -337,22 +329,6 @@ unsigned long clk_get_max_axi_khz(void)
 	return MAX_AXI;
 }
 EXPORT_SYMBOL(clk_get_max_axi_khz);
-
-#define POWER_COLLAPSE_KHZ MAX_AXI
-unsigned long acpuclk_power_collapse(void)
-{
-	int ret = acpuclk_get_rate(smp_processor_id());
-	acpuclk_set_rate(smp_processor_id(), POWER_COLLAPSE_KHZ, SETRATE_PC);
-	return ret;
-}
-
-#define WAIT_FOR_IRQ_KHZ MAX_AXI
-unsigned long acpuclk_wait_for_irq(void)
-{
-	int ret = acpuclk_get_rate(smp_processor_id());
-	acpuclk_set_rate(smp_processor_id(), WAIT_FOR_IRQ_KHZ, SETRATE_SWFI);
-	return ret;
-}
 
 static void select_core_source(unsigned int id, unsigned int src)
 {
@@ -605,7 +581,8 @@ static void switch_sc_speed(int cpu, struct clkctl_acpu_speed *tgt_s)
 	drv_state.current_speed[cpu] = tgt_s;
 }
 
-int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
+static int acpuclk_8x60_set_rate(int cpu, unsigned long rate,
+				 enum setrate_reason reason)
 {
 	struct clkctl_acpu_speed *tgt_s, *strt_s;
 	struct clkctl_l2_speed *tgt_l2;
@@ -869,17 +846,17 @@ static int __cpuinit acpuclock_cpu_callback(struct notifier_block *nfb,
 	switch (action) {
 	case CPU_DEAD:
 	case CPU_DEAD_FROZEN:
-		prev_khz[cpu] = acpuclk_get_rate(cpu);
+		prev_khz[cpu] = acpuclk_8x60_get_rate(cpu);
 		/* Fall through. */
 	case CPU_UP_CANCELED:
 	case CPU_UP_CANCELED_FROZEN:
-		acpuclk_set_rate(cpu, HOT_UNPLUG_KHZ, SETRATE_HOTPLUG);
+		acpuclk_8x60_set_rate(cpu, HOT_UNPLUG_KHZ, SETRATE_HOTPLUG);
 		break;
 	case CPU_UP_PREPARE:
 	case CPU_UP_PREPARE_FROZEN:
 		if (WARN_ON(!prev_khz[cpu]))
 			prev_khz[cpu] = acpu_freq_tbl->acpuclk_khz;
-		acpuclk_set_rate(cpu, prev_khz[cpu], SETRATE_HOTPLUG);
+		acpuclk_8x60_set_rate(cpu, prev_khz[cpu], SETRATE_HOTPLUG);
 		break;
 	default:
 		break;
@@ -946,15 +923,20 @@ static unsigned int __init select_freq_plan(void)
 	return f->acpuclk_khz;
 }
 
-void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
+static struct acpuclk_data acpuclk_8x60_data = {
+	.set_rate = acpuclk_8x60_set_rate,
+	.get_rate = acpuclk_8x60_get_rate,
+	.power_collapse_khz = MAX_AXI,
+	.wait_for_irq_khz = MAX_AXI,
+};
+
+int __init acpuclk_8x60_init(struct acpuclk_platform_data *clkdata)
 {
 	unsigned int max_cpu_khz;
 	int cpu;
 
 	mutex_init(&drv_state.lock);
 	spin_lock_init(&drv_state.l2_lock);
-	drv_state.acpu_switch_time_us = clkdata->acpu_switch_time_us;
-	drv_state.vdd_switch_time_us = clkdata->vdd_switch_time_us;
 
 	/* Configure hardware. */
 	max_cpu_khz = select_freq_plan();
@@ -968,8 +950,11 @@ void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *clkdata)
 
 	/* Improve boot time by ramping up CPUs immediately. */
 	for_each_online_cpu(cpu)
-		acpuclk_set_rate(cpu, max_cpu_khz, SETRATE_INIT);
+		acpuclk_8x60_set_rate(cpu, max_cpu_khz, SETRATE_INIT);
 
+	acpuclk_register(&acpuclk_8x60_data);
 	cpufreq_table_init();
 	register_hotcpu_notifier(&acpuclock_cpu_notifier);
+
+	return 0;
 }

@@ -479,8 +479,6 @@ int __init msm_add_sdcc(unsigned int controller,
 void __init msm_clock_init(void);
 #endif
 
-void __init msm_acpu_clock_init(struct msm_acpu_clock_platform_data *);
-
 struct msm_usb_host_platform_data;
 int __init msm_add_host(unsigned int host,
 		struct msm_usb_host_platform_data *plat);
