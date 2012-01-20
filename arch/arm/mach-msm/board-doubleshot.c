@@ -117,7 +117,7 @@
 #include "saw-regulator.h"
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
-#include "rpm-regulator.h"
+#include <mach/rpm-regulator.h>
 #include "sysinfo-8x60.h"
 #include "mpm.h"
 #include "clock-8x60.h"

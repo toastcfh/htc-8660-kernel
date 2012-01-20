@@ -28,9 +28,9 @@
 #include <mach/msm_bus.h>
 #include <mach/msm_bus_board.h>
 #include <mach/socinfo.h>
+#include <mach/rpm-regulator.h>
 
 #include "acpuclock.h"
-#include "rpm-regulator.h"
 #include "avs.h"
 
 /* Frequency switch modes. */

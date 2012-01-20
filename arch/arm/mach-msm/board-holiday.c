@@ -122,7 +122,7 @@
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
 #include "mpm.h"
-#include "rpm-regulator.h"
+#include <mach/rpm-regulator.h>
 #include "sysinfo-8x60.h"
 #include <mach/htc_usb.h>
 #include <mach/rpc_hsusb.h>
