@@ -8,11 +8,6 @@
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
- * 02110-1301, USA.
  */
 
 #include <linux/kernel.h>
@@ -35,12 +30,8 @@
 #include <mach/socinfo.h>
 
 #include "acpuclock.h"
-#include "clock-8x60.h"
 #include "rpm-regulator.h"
 #include "avs.h"
-
-#define dprintk(msg...) \
-	cpufreq_debug_printk(CPUFREQ_DEBUG_DRIVER, "cpufreq-msm", msg)
 
 /* Frequency switch modes. */
 #define SHOT_SWITCH		4
@@ -55,6 +46,8 @@
 #define L_VAL_SCPLL_CAL_MAX	0x1C /* = 1512 MHz with 27MHz source */
 
 #define MAX_VDD_SC		1250000 /* uV */
+#define MAX_VDD_MEM		1250000 /* uV */
+#define MAX_VDD_DIG		1200000 /* uV */
 #define MAX_AXI			 310500 /* KHz */
 #define SCPLL_LOW_VDD_FMAX	 594000 /* KHz */
 #ifdef CONFIG_ARCH_MSM8X60_LTE
@@ -367,10 +360,10 @@ static void select_core_source(unsigned int id, unsigned int src)
 	int shift;
 
 	shift = (id == L2) ? 0 : 1;
-	regval = readl(clk_sel_addr[id]);
+	regval = readl_relaxed(clk_sel_addr[id]);
 	regval &= ~(0x3 << shift);
 	regval |= (src << shift);
-	writel(regval, clk_sel_addr[id]);
+	writel_relaxed(regval, clk_sel_addr[id]);
 }
 
 static void select_clk_source_div(unsigned int id, struct clkctl_acpu_speed *s)
@@ -380,23 +373,23 @@ static void select_clk_source_div(unsigned int id, struct clkctl_acpu_speed *s)
 	/* Configure the PLL divider mux if we plan to use it. */
 	if (s->core_src_sel == 0) {
 
-		reg_clksel = readl(clk_sel_addr[id]);
+		reg_clksel = readl_relaxed(clk_sel_addr[id]);
 
 		/* CLK_SEL_SRC1N0 (bank) bit. */
 		src_sel = reg_clksel & 1;
 
 		/* Program clock source and divider. */
-		reg_clkctl = readl(clk_ctl_addr[id]);
+		reg_clkctl = readl_relaxed(clk_ctl_addr[id]);
 		reg_clkctl &= ~(0xFF << (8 * src_sel));
 		reg_clkctl |= s->acpuclk_src_sel << (4 + 8 * src_sel);
 		reg_clkctl |= s->acpuclk_src_div << (0 + 8 * src_sel);
-		writel(reg_clkctl, clk_ctl_addr[id]);
+		writel_relaxed(reg_clkctl, clk_ctl_addr[id]);
 
 		/* Toggle clock source. */
 		reg_clksel ^= 1;
 
 		/* Program clock source selection. */
-		writel(reg_clksel, clk_sel_addr[id]);
+		writel_relaxed(reg_clksel, clk_sel_addr[id]);
 	}
 }
 
@@ -405,22 +398,23 @@ static void scpll_enable(int sc_pll, uint32_t l_val)
 	uint32_t regval;
 
 	/* Power-up SCPLL into standby mode. */
-	writel(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
-	dsb();
+	writel_relaxed(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	mb();
 	udelay(10);
 
 	/* Shot-switch to target frequency. */
 	regval = (l_val << 3) | SHOT_SWITCH;
-	writel(regval, sc_pll_base[sc_pll] + SCPLL_FSM_CTL_EXT_OFFSET);
-	writel(SCPLL_NORMAL, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
-	dsb();
+	writel_relaxed(regval, sc_pll_base[sc_pll] + SCPLL_FSM_CTL_EXT_OFFSET);
+	writel_relaxed(SCPLL_NORMAL, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	mb();
 	udelay(20);
 }
 
 static void scpll_disable(int sc_pll)
 {
 	/* Power down SCPLL. */
-	writel(SCPLL_POWER_DOWN, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	writel_relaxed(SCPLL_POWER_DOWN,
+		       sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
 }
 
 static void scpll_change_freq(int sc_pll, uint32_t l_val)
@@ -430,14 +424,15 @@ static void scpll_change_freq(int sc_pll, uint32_t l_val)
 
 	/* Complex-slew switch to target frequency. */
 	regval = (l_val << 3) | COMPLEX_SLEW;
-	writel(regval, base_addr + SCPLL_FSM_CTL_EXT_OFFSET);
-	writel(SCPLL_NORMAL, base_addr + SCPLL_CTL_OFFSET);
+	writel_relaxed(regval, base_addr + SCPLL_FSM_CTL_EXT_OFFSET);
+	writel_relaxed(SCPLL_NORMAL, base_addr + SCPLL_CTL_OFFSET);
 
 	/* Wait for frequency switch to start. */
-	while (((readl(base_addr + SCPLL_CTL_OFFSET) >> 3) & 0x3F) != l_val)
+	while (((readl_relaxed(base_addr + SCPLL_CTL_OFFSET) >> 3) & 0x3F)
+			!= l_val)
 		cpu_relax();
 	/* Wait for frequency switch to finish. */
-	while (readl(base_addr + SCPLL_STATUS_OFFSET) & 0x1)
+	while (readl_relaxed(base_addr + SCPLL_STATUS_OFFSET) & 0x1)
 		cpu_relax();
 }
 
@@ -472,11 +467,11 @@ static void set_l2_speed(struct clkctl_l2_speed *tgt_s)
 	else {
 		if (tgt_s->src_sel == 1) {
 			scpll_enable(L2, tgt_s->l_val);
-			dsb();
+			mb();
 			select_core_source(L2, tgt_s->src_sel);
 		} else {
 			select_core_source(L2, tgt_s->src_sel);
-			dsb();
+			mb();
 			scpll_disable(L2);
 		}
 	}
@@ -594,12 +589,14 @@ static void switch_sc_speed(int cpu, struct clkctl_acpu_speed *tgt_s)
 		select_core_source(cpu, tgt_s->core_src_sel);
 	} else if (strt_s->pll != ACPU_SCPLL && tgt_s->pll == ACPU_SCPLL) {
 		scpll_enable(cpu, tgt_s->l_val);
-		dsb();
+		mb();
 		select_core_source(cpu, tgt_s->core_src_sel);
 	} else if (strt_s->pll == ACPU_SCPLL && tgt_s->pll != ACPU_SCPLL) {
 		select_clk_source_div(cpu, tgt_s);
 		select_core_source(cpu, tgt_s->core_src_sel);
-		dsb();
+		/* Core source switch must complete before disabling SCPLL. */
+		mb();
+		udelay(1);
 		scpll_disable(cpu);
 	} else
 		scpll_change_freq(cpu, tgt_s->l_val);
@@ -666,7 +663,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 			goto out;
 	}
 
-	dprintk("Switching from ACPU%d rate %u KHz -> %u KHz\n",
+	pr_debug("Switching from ACPU%d rate %u KHz -> %u KHz\n",
 		cpu, strt_s->acpuclk_khz, tgt_s->acpuclk_khz);
 
 	/* Switch CPU speed. */
@@ -693,7 +690,7 @@ int acpuclk_set_rate(int cpu, unsigned long rate, enum setrate_reason reason)
 	if (tgt_s->acpuclk_khz < strt_s->acpuclk_khz)
 		decrease_vdd(cpu, tgt_s->vdd_sc, vdd_mem, vdd_dig, reason);
 
-	dprintk("ACPU%d speed change complete\n", cpu);
+	pr_debug("ACPU%d speed change complete\n", cpu);
 
 	/* Re-enable AVS */
 	if (reason == SETRATE_CPUFREQ)
@@ -719,17 +716,19 @@ static void __init scpll_init(int sc_pll)
 {
 	uint32_t regval;
 
-	dprintk("Initializing SCPLL%d\n", sc_pll);
+	pr_debug("Initializing SCPLL%d\n", sc_pll);
 
 	/* Clear calibration LUT registers containing max frequency entry.
 	 * LUT registers are only writeable in debug mode. */
-	writel(SCPLL_DEBUG_FULL, sc_pll_base[sc_pll] + SCPLL_DEBUG_OFFSET);
-	writel(0x0, sc_pll_base[sc_pll] + SCPLL_LUT_A_HW_MAX);
-	writel(SCPLL_DEBUG_NONE, sc_pll_base[sc_pll] + SCPLL_DEBUG_OFFSET);
+	writel_relaxed(SCPLL_DEBUG_FULL,
+		       sc_pll_base[sc_pll] + SCPLL_DEBUG_OFFSET);
+	writel_relaxed(0x0, sc_pll_base[sc_pll] + SCPLL_LUT_A_HW_MAX);
+	writel_relaxed(SCPLL_DEBUG_NONE,
+		       sc_pll_base[sc_pll] + SCPLL_DEBUG_OFFSET);
 
 	/* Power-up SCPLL into standby mode. */
-	writel(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
-	dsb();
+	writel_relaxed(SCPLL_STANDBY, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	mb();
 	udelay(10);
 
 	/* Calibrate the SCPLL to the maximum range supported by the h/w. We
@@ -737,10 +736,10 @@ static void __init scpll_init(int sc_pll)
 	 * simplifies changes required for future increases in max CPU freq.
 	 */
 	regval = (L_VAL_SCPLL_CAL_MAX << 24) | (L_VAL_SCPLL_CAL_MIN << 16);
-	writel(regval, sc_pll_base[sc_pll] + SCPLL_CAL_OFFSET);
+	writel_relaxed(regval, sc_pll_base[sc_pll] + SCPLL_CAL_OFFSET);
 
 	/* Start calibration */
-	writel(SCPLL_FULL_CAL, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
+	writel_relaxed(SCPLL_FULL_CAL, sc_pll_base[sc_pll] + SCPLL_CTL_OFFSET);
 
 	/* Wait for proof that calibration has started before checking the
 	 * 'calibration done' bit in the status register. Waiting for the
@@ -748,11 +747,11 @@ static void __init scpll_init(int sc_pll)
 	 * This is required since the 'calibration done' bit takes time to
 	 * transition from 'done' to 'not done' when starting a calibration.
 	 */
-	while (readl(sc_pll_base[sc_pll] + SCPLL_LUT_A_HW_MAX) == 0)
+	while (readl_relaxed(sc_pll_base[sc_pll] + SCPLL_LUT_A_HW_MAX) == 0)
 		cpu_relax();
 
 	/* Wait for calibration to complete. */
-	while (readl(sc_pll_base[sc_pll] + SCPLL_STATUS_OFFSET) & 0x2)
+	while (readl_relaxed(sc_pll_base[sc_pll] + SCPLL_STATUS_OFFSET) & 0x2)
 		cpu_relax();
 
 	/* Power-down SCPLL. */
@@ -787,13 +786,13 @@ static void __init scpll_set_refs(void)
 
 	/* Bit 4 = 0:PXO, 1:MXO. */
 	for_each_possible_cpu(cpu) {
-		regval = readl(sc_pll_base[cpu] + SCPLL_CFG_OFFSET);
+		regval = readl_relaxed(sc_pll_base[cpu] + SCPLL_CFG_OFFSET);
 		regval &= ~BIT(4);
-		writel(regval, sc_pll_base[cpu] + SCPLL_CFG_OFFSET);
+		writel_relaxed(regval, sc_pll_base[cpu] + SCPLL_CFG_OFFSET);
 	}
-	regval = readl(sc_pll_base[L2] + SCPLL_CFG_OFFSET);
+	regval = readl_relaxed(sc_pll_base[L2] + SCPLL_CFG_OFFSET);
 	regval &= ~BIT(4);
-	writel(regval, sc_pll_base[L2] + SCPLL_CFG_OFFSET);
+	writel_relaxed(regval, sc_pll_base[L2] + SCPLL_CFG_OFFSET);
 }
 
 /* Voltage regulator initialization. */
@@ -908,7 +907,7 @@ static unsigned int __init select_freq_plan(void)
 	uint32_t pte_efuse, speed_bin, pvs, max_khz;
 	struct clkctl_acpu_speed *f;
 
-	pte_efuse = readl(QFPROM_PTE_EFUSE_ADDR);
+	pte_efuse = readl_relaxed(QFPROM_PTE_EFUSE_ADDR);
 
 	speed_bin = pte_efuse & 0xF;
 	if (speed_bin == 0xF)
