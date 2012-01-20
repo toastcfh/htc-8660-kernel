@@ -930,7 +930,7 @@ static struct acpuclk_data acpuclk_8x60_data = {
 	.wait_for_irq_khz = MAX_AXI,
 };
 
-int __init acpuclk_8x60_init(struct acpuclk_platform_data *clkdata)
+static int __init acpuclk_8x60_init(struct acpuclk_soc_data *soc_data)
 {
 	unsigned int max_cpu_khz;
 	int cpu;
@@ -958,3 +958,7 @@ int __init acpuclk_8x60_init(struct acpuclk_platform_data *clkdata)
 
 	return 0;
 }
+
+struct acpuclk_soc_data acpuclk_8x60_soc_data __initdata = {
+	.init = acpuclk_8x60_init,
+};

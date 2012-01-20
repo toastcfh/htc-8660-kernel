@@ -304,10 +304,6 @@ static struct msm_spm_platform_data msm_spm_data[] __initdata = {
 	},
 };
 
-static struct acpuclk_platform_data msm8x60_acpuclk_data __initdata = {
-	.init = acpuclk_8x60_init,
-};
-
 #ifdef CONFIG_PERFLOCK
 static unsigned holiday_perf_acpu_table_1188k[] = {
 	384000000,
@@ -5758,7 +5754,7 @@ static void __init holiday_init(void)
 
 	platform_add_devices(early_devices, ARRAY_SIZE(early_devices));
 	/* CPU frequency control is not supported on simulated targets. */
-	acpuclk_init(&msm8x60_acpuclk_data);
+	acpuclk_init(&acpuclk_8x60_soc_data);
 
 #ifdef CONFIG_PERFLOCK
 	if (holiday_perf_acpu_table_1188k[PERF_LOCK_HIGHEST] == get_max_cpu_freq() * 1000 ) {

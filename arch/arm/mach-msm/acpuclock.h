@@ -32,16 +32,12 @@ enum setrate_reason {
 };
 
 /**
- * struct acpuclk_platform_data - Platform data for acpuclk_init()
+ * struct acpuclk_soc_data - SoC data for acpuclk_init()
  */
-struct acpuclk_platform_data {
-	uint32_t acpu_switch_time_us;
+struct acpuclk_soc_data {
 	unsigned long max_speed_delta_khz;
-	uint32_t vdd_switch_time_us;
 	unsigned int max_axi_khz;
-	unsigned int max_vdd;
-	int (*acpu_set_vdd) (int mvolts);
-	int (*init)(struct acpuclk_platform_data *);
+	int (*init)(struct acpuclk_soc_data *);
 };
 
 /**
@@ -101,10 +97,10 @@ void acpuclk_register(struct acpuclk_data *data);
  *
  * Return 0 for success.
  */
-int acpuclk_init(struct acpuclk_platform_data *);
+int acpuclk_init(struct acpuclk_soc_data *);
 
 /* SoC-specific acpuclock initialization functions. */
-int acpuclk_8x60_init(struct acpuclk_platform_data *);
+extern struct acpuclk_soc_data acpuclk_8x60_soc_data;
 
 unsigned long acpuclk_get_wfi_rate(void);
 
