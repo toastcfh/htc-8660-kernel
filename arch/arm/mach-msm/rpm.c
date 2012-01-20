@@ -33,8 +33,7 @@
 #include <asm/hardware/gic.h>
 #include <mach/msm_iomap.h>
 #include <linux/slab.h>
-
-#include "rpm.h"
+#include <mach/rpm.h>
 
 /******************************************************************************
  * Data type and structure definitions

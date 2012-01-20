@@ -56,7 +56,7 @@
 #include "cpuidle.h"
 #include "idle.h"
 #include "pm.h"
-#include "rpm.h"
+#include <mach/rpm.h>
 #include "rpm_resources.h"
 #include "scm-boot.h"
 #include "spm.h"

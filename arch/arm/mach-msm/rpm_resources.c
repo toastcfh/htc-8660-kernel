@@ -27,7 +27,7 @@
 #include <asm/div64.h>
 
 #include "mpm.h"
-#include "rpm.h"
+#include <mach/rpm.h>
 #include "rpm_resources.h"
 
 /******************************************************************************

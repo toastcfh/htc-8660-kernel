@@ -32,7 +32,7 @@
 
 #include "clock-local.h"
 #include "clock-8x60.h"
-#include "rpm.h"
+#include <mach/rpm.h>
 #include <mach/rpm-regulator.h>
 
 #ifdef CONFIG_MSM_SECURE_IO

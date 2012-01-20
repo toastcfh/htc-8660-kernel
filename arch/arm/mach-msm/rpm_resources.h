@@ -31,7 +31,7 @@
 #define __ARCH_ARM_MACH_MSM_RPM_RESOURCES_H
 
 #include "pm.h"
-#include "rpm.h"
+#include <mach/rpm.h>
 
 struct msm_rpmrs_limits {
 	uint32_t pxo;

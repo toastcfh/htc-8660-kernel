@@ -25,7 +25,7 @@
 #include <linux/mfd/pmic8901.h>
 
 #include <mach/rpm-regulator.h>
-#include "rpm.h"
+#include <mach/rpm.h>
 #include "rpm_resources.h"
 
 /* Debug Definitions */

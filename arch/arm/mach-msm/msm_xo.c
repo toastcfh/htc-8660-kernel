@@ -27,7 +27,7 @@
 
 #include <mach/msm_xo.h>
 
-#include "rpm.h"
+#include <mach/rpm.h>
 #include "rpm_resources.h"
 
 static DEFINE_SPINLOCK(msm_xo_lock);

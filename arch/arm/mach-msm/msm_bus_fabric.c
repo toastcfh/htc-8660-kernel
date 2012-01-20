@@ -26,7 +26,7 @@
 #include <mach/clk.h>
 #include <mach/board.h>
 #include "msm_bus_core.h"
-#include "rpm.h"
+#include <mach/rpm.h>
 
 #define BWMASK 0x7FFF
 #define TIERMASK 0x8000
