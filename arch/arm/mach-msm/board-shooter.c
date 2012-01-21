@@ -78,6 +78,7 @@
 #include <mach/htc_battery_8x60.h>
 #include <linux/tps65200.h>
 #include <mach/msm_hsusb.h>
+#include <mach/gpiomux.h>
 #ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
 #endif
@@ -117,7 +118,6 @@
 #ifdef CONFIG_FB_MSM_HDMI_MHL
 #include <mach/mhl.h>
 #endif
-#include "gpiomux.h"
 #include "gpiomux-8x60.h"
 #include "mpm.h"
 #include "sysinfo-8x60.h"
