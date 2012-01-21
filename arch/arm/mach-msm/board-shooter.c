@@ -4648,8 +4648,6 @@ struct msm_sdcc_gpio {
 	s16 no;
 	/* name of this GPIO */
 	const char *name;
-	bool always_on;
-	bool is_enabled;
 };
 
 #ifdef CONFIG_MMC_MSM_SDC1_SUPPORT
@@ -4688,7 +4686,7 @@ static uint32_t sdc1_on_gpio_table[] = {
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
 static struct msm_sdcc_gpio sdc2_gpio_cfg[] = {
 	{143, "sdc2_dat_0"},
-	{144, "sdc2_dat_1", 1},
+	{144, "sdc2_dat_1"},
 	{145, "sdc2_dat_2"},
 	{146, "sdc2_dat_3"},
 #ifdef CONFIG_MMC_MSM_SDC2_8_BIT_SUPPORT
@@ -4706,9 +4704,9 @@ static struct msm_sdcc_gpio sdc2_gpio_cfg[] = {
 static struct msm_sdcc_gpio sdc5_gpio_cfg[] = {
 	{95, "sdc5_cmd"},
 	{96, "sdc5_dat_3"},
-	{97, "sdc5_clk", 1},
+	{97, "sdc5_clk"},
 	{98, "sdc5_dat_2"},
-	{99, "sdc5_dat_1", 1},
+	{99, "sdc5_dat_1"},
 	{100, "sdc5_dat_0"}
 };
 #endif
@@ -4786,7 +4784,6 @@ struct msm_sdcc_pin_cfg {
 	struct msm_sdcc_pad_pull_cfg *pad_pull_off_data;
 	u8 pad_drv_data_size;
 	u8 pad_pull_data_size;
-	u8 sdio_lpm_gpio_cfg;
 };
 
 
@@ -4848,12 +4845,6 @@ static int msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
 
 	for (n = 0; n < curr->gpio_data_size; n++) {
 		if (enable) {
-		
-		if (curr->gpio_data[n].always_on &&
-				curr->gpio_data[n].is_enabled)
-				continue;
-			pr_debug("%s: enable: %s\n", __func__,
-					curr->gpio_data[n].name);
 			rc = gpio_request(curr->gpio_data[n].no,
 				curr->gpio_data[n].name);
 			if (rc) {
@@ -4872,19 +4863,13 @@ static int msm_sdcc_setup_gpio(int dev_id, unsigned int enable)
 					curr->gpio_data[n].no);
 				goto free_gpios;
 			}
-			curr->gpio_data[n].is_enabled = 1;
 		} else {
 			/*
 			 * now free this GPIO which will put GPIO
 			 * in low power mode and will also put GPIO
 			 * in input mode
 			 */
-			 if (curr->gpio_data[n].always_on)
-				continue;
-			pr_debug("%s: disable: %s\n", __func__,
-					curr->gpio_data[n].name);
 			gpio_free(curr->gpio_data[n].no);
-			curr->gpio_data[n].is_enabled = 0;
 		}
 	}
 	curr->cfg_sts = enable;
@@ -4912,45 +4897,22 @@ static int msm_sdcc_setup_pad(int dev_id, unsigned int enable)
 		 * set up the normal driver strength and
 		 * pull config for pads
 		 */
-		for (n = 0; n < curr->pad_drv_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_drv_on_data[n].drv ==
-						TLMM_HDRV_SDC4_DATA)
-					continue;
+		for (n = 0; n < curr->pad_drv_data_size; n++)
 			msm_tlmm_set_hdrive(curr->pad_drv_on_data[n].drv,
 				curr->pad_drv_on_data[n].drv_val);
-		}
-		for (n = 0; n < curr->pad_pull_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_pull_on_data[n].pull ==
-					TLMM_PULL_SDC4_DATA)
-					continue;
-			}
+		for (n = 0; n < curr->pad_pull_data_size; n++)
 			msm_tlmm_set_pull(curr->pad_pull_on_data[n].pull,
 				curr->pad_pull_on_data[n].pull_val);
-		}
 	} else {
 		/* set the low power config for pads */
-		for (n = 0; n < curr->pad_drv_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_drv_off_data[n].drv ==
-					TLMM_HDRV_SDC4_DATA)
-					continue;
-			}
+		for (n = 0; n < curr->pad_drv_data_size; n++)
 			msm_tlmm_set_hdrive(
 				curr->pad_drv_off_data[n].drv,
 				curr->pad_drv_off_data[n].drv_val);
-		}
-		for (n = 0; n < curr->pad_pull_data_size; n++) {
-			if (curr->sdio_lpm_gpio_cfg) {
-				if (curr->pad_pull_off_data[n].pull ==
-					TLMM_PULL_SDC4_DATA)
-				continue;
-			}
+		for (n = 0; n < curr->pad_pull_data_size; n++)
 			msm_tlmm_set_pull(
 				curr->pad_pull_off_data[n].pull,
 				curr->pad_pull_off_data[n].pull_val);
-		}
 	}
 	curr->cfg_sts = enable;
 out:
@@ -5176,28 +5138,6 @@ setup_vreg:
 	return rc;
 }
 
-#if (defined(CONFIG_MMC_MSM_SDC2_SUPPORT)\
-	|| defined(CONFIG_MMC_MSM_SDC5_SUPPORT))
-static void msm_sdcc_sdio_lpm_gpio(struct device *dv, unsigned int active)
-{
-	struct msm_sdcc_pin_cfg *curr_pin_cfg;
-	struct platform_device *pdev;
-
-	pdev = container_of(dv, struct platform_device, dev);
-	/* setup gpio/pad */
-	curr_pin_cfg = &sdcc_pin_cfg_data[pdev->id - 1];
-
-	if (curr_pin_cfg->cfg_sts == active)
-		return;
-
-	curr_pin_cfg->sdio_lpm_gpio_cfg = 1;
-	if (curr_pin_cfg->is_gpio)
-		msm_sdcc_setup_gpio(pdev->id, active);
-	else
-		msm_sdcc_setup_pad(pdev->id, active);
-	curr_pin_cfg->sdio_lpm_gpio_cfg = 0;
-}
-#endif
 static int msm_sdc3_get_wpswitch(struct device *dev)
 {
 	struct platform_device *pdev;
@@ -5279,7 +5219,6 @@ static unsigned int shooter_sdslot_type = MMC_TYPE_SD;
 static struct mmc_platform_data msm8x60_sdc3_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
 	.translate_vdd  = msm_sdcc_setup_power,
-	.sdio_lpm_gpio_setup = msm_sdcc_sdio_lpm_gpio,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.wpswitch  	= msm_sdc3_get_wpswitch,
 #ifdef CONFIG_MMC_MSM_CARD_HW_DETECTION
@@ -5315,7 +5254,6 @@ static struct mmc_platform_data msm8x60_sdc4_data = {
 static struct mmc_platform_data msm8x60_sdc5_data = {
 	.ocr_mask       = MMC_VDD_27_28 | MMC_VDD_28_29,
 	.translate_vdd  = msm_sdcc_setup_power,
-	.sdio_lpm_gpio_setup = msm_sdcc_sdio_lpm_gpio,
 	.mmc_bus_width  = MMC_CAP_4_BIT_DATA,
 	.msmsdcc_fmin	= 400000,
 	.msmsdcc_fmid	= 24000000,
