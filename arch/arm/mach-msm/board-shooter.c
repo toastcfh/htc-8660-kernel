@@ -3398,10 +3398,8 @@ static struct platform_device *surf_devices[] __initdata = {
 #endif
 	&shooter_3Dpanel_device,
 	&msm_kgsl_3d0,
-#ifdef CONFIG_MSM_KGSL_2D
 	&msm_kgsl_2d0,
 	&msm_kgsl_2d1,
-#endif
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL
 	&hdmi_msm_device,
 #endif /* CONFIG_FB_MSM_HDMI_MSM_PANEL */
