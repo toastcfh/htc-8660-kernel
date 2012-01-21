@@ -315,7 +315,7 @@ static struct regulator_consumer_supply saw_s1_supply =
 static struct regulator_init_data saw_s0_init_data = {
 		.constraints = {
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
-			.min_uV = 840000,
+			.min_uV = 800000,
 			.max_uV = 1250000,
 		},
 		.num_consumer_supplies = 1,
@@ -325,7 +325,7 @@ static struct regulator_init_data saw_s0_init_data = {
 static struct regulator_init_data saw_s1_init_data = {
 		.constraints = {
 			.valid_ops_mask = REGULATOR_CHANGE_VOLTAGE,
-			.min_uV = 840000,
+			.min_uV = 800000,
 			.max_uV = 1250000,
 		},
 		.num_consumer_supplies = 1,
