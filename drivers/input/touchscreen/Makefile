@@ -38,7 +38,7 @@ obj-$(CONFIG_TOUCHSCREEN_PENMOUNT)	+= penmount.o
 obj-$(CONFIG_TOUCHSCREEN_S3C2410)	+= s3c2410_ts.o
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_3K)       += synaptics_3k.o
 obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI)	+= synaptics_i2c_rmi.o
-ifndef CONFIG_MACH_RUBY
+ifndef CONFIG_TOUCHSCREEN_ATMEL_RUBY
 obj-$(CONFIG_TOUCHSCREEN_ATMEL) += atmel.o atmel_224e.o
 else
 obj-$(CONFIG_TOUCHSCREEN_ATMEL) += atmel_ruby.o atmel_224e_ruby.o

@@ -17,6 +17,12 @@ config TOUCHSCREEN_ATMEL
 	help
 	  This enables support for Atmel over I2C based touchscreens.
 
+config TOUCHSCREEN_ATMEL_RUBY
+	bool "Ruby-TS
+	depends on TOUCHSCREEN_ATMEL
+	help
+	  Use the Ruby/Vigor version of the Atmel driver instead of normal.
+
 config TOUCHSCREEN_NTRIG
 	tristate "N-trig spi touchscreen"
 	depends on SPI_TOUCHSCREEN_NTRIG
