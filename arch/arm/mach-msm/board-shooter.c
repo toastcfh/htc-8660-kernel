@@ -6079,7 +6079,7 @@ static void __init shooter_init(void)
 	/* Initialize regulators needed for clock_init. */
 	platform_add_devices(early_regulators, ARRAY_SIZE(early_regulators));
 
-	msm_clock_init(msm_clocks_8x60, msm_num_clocks_8x60);
+	msm8660_clock_init();
 
 	#ifdef CONFIG_SP3D
 	spi_register_board_info(sp3d_spi_board_info,
