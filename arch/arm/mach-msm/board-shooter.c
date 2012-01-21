@@ -80,6 +80,7 @@
 #ifdef CONFIG_MSM_DSPS
 #include <mach/msm_dsps.h>
 #endif
+#include <mach/rpm-regulator.h>
 #include <mach/msm_xo.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_flashlight.h>
@@ -116,7 +117,6 @@
 #include "gpiomux.h"
 #include "gpiomux-8x60.h"
 #include "mpm.h"
-#include "rpm-regulator.h"
 #include "sysinfo-8x60.h"
 
 #include <mach/htc_usb.h>
