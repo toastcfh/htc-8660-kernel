@@ -82,6 +82,8 @@
 #include <mach/msm_dsps.h>
 #endif
 #include <mach/rpm-regulator.h>
+#include <mach/restart.h>
+
 #include <mach/msm_xo.h>
 #include <mach/msm_bus_board.h>
 #include <mach/msm_flashlight.h>
@@ -6034,6 +6036,8 @@ static void __init shooter_init(void)
 	struct kobject *properties_kobj;
 	msm_mpm_defer_ignore_list = 1;
 
+	pmic_reset_irq = PM8058_RESOUT_IRQ(PM8058_IRQ_BASE);
+	
 	/*
 	 * Initialize RPM first as other drivers and devices may need
 	 * it for their initialization.
