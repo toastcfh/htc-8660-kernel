@@ -2268,7 +2268,6 @@ static struct msm_charger_platform_data msm_charger_data = {
 	.update_time = 1,
 	.max_voltage = 4200,
 	.min_voltage = 3200,
-	.resume_voltage = 4100,
 };
 
 static struct platform_device msm_charger_device = {
