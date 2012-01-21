@@ -594,7 +594,7 @@ static struct msm_hsusb_platform_data msm_hsusb_pdata = {
 	.pclk_src_name	= "dfab_usb_hs_clk",
 };
 
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 static void msm_hsusb_vbus_power(unsigned phy_info, int on)
 {
 	static int vbus_is_on;
@@ -613,7 +613,7 @@ static struct msm_usb_host_platform_data msm_usb_host_pdata = {
 #endif
 
 
-#if defined(CONFIG_BATTERY_MSM8X60) && !defined(CONFIG_USB_EHCI_MSM)
+#if defined(CONFIG_BATTERY_MSM8X60) && !defined(CONFIG_USB_EHCI_MSM_72K)
 static int msm_hsusb_pmic_notif_init(void (*callback)(int online), int init)
 {
 	if (init)
@@ -623,7 +623,7 @@ static int msm_hsusb_pmic_notif_init(void (*callback)(int online), int init)
 	return 0;
 }
 #endif
-#if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_MSM)
+#if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_MSM_72K)
 static struct msm_otg_platform_data msm_otg_pdata = {
 	/* if usb link is in sps there is no need for
 	 * usb pclk as dayatona fabric clock will be
@@ -634,10 +634,10 @@ static struct msm_otg_platform_data msm_otg_pdata = {
 	.pemp_level		 = PRE_EMPHASIS_WITH_20_PERCENT,
 	.cdr_autoreset		 = CDR_AUTO_RESET_DISABLE,
 	.se1_gating		 = SE1_GATING_DISABLE,
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 	.vbus_power = msm_hsusb_vbus_power,
 #endif
-#if defined(CONFIG_BATTERY_MSM8X60) && !defined(CONFIG_USB_EHCI_MSM)
+#if defined(CONFIG_BATTERY_MSM8X60) && !defined(CONFIG_USB_EHCI_MSM_72K)
 	.pmic_notif_init         = msm_hsusb_pmic_notif_init,
 #endif
 	.ldo_init		 = msm_hsusb_ldo_init,
@@ -5764,7 +5764,7 @@ static void __init shooter_init(void)
 		platform_add_devices(surf_devices,
 				     ARRAY_SIZE(surf_devices));
 
-#ifdef CONFIG_USB_EHCI_MSM
+#ifdef CONFIG_USB_EHCI_MSM_72K
 		msm_add_host(0, &msm_usb_host_pdata);
 #endif
 	}
