@@ -2351,7 +2351,6 @@ static struct msm_bus_paths pmem_smi_table[] = {
 static struct msm_bus_scale_pdata smi_client_pdata = {
 	.usecase = pmem_smi_table,
 	.num_usecases = ARRAY_SIZE(pmem_smi_table),
-	.active_only = 1,
 	.name = "pmem_smi",
 };
 
