@@ -3768,6 +3768,8 @@ static struct othc_n_switch_config htc_headset_othc_switch_config = {
 	.adc_channel = CHANNEL_ADC_HDSET,
 	.switch_info = htc_headset_othc_switch_info,
 	.num_keys = ARRAY_SIZE(htc_headset_othc_switch_info),
+	.default_sw_en = true,
+	.default_sw_idx = 0,
 };
 
 static struct hsed_bias_config htc_headset_othc_bias_config = {
