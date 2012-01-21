@@ -131,6 +131,9 @@
 #endif
 
 #define MSM_SHARED_RAM_PHYS 0x40000000
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+int set_two_phase_freq(int cpufreq);
+#endif
 
 #define PANEL_SHARP			0
 #define PANEL_SAMSUNG			1
@@ -5291,6 +5294,9 @@ static void __init rider_init(void)
 
 #ifdef CONFIG_PERFLOCK
 	perflock_init(&holiday_perflock_data);
+#endif
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+	set_two_phase_freq(1134000);
 #endif
 
 	msm8x60_init_tlmm();

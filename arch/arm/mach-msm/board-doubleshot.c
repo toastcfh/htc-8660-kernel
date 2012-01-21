@@ -145,6 +145,9 @@ unsigned int doubleshot_get_engineerid(void)
 #ifdef CONFIG_MICROP_COMMON
 void __init doubleshot_microp_init(void);
 #endif
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+int set_two_phase_freq(int cpufreq);
+#endif
 
 extern int panel_type;
 
@@ -5043,6 +5046,9 @@ static void __init doubleshot_init(void)
 
 #ifdef CONFIG_PERFLOCK
 	perflock_init(&doubleshot_perflock_data);
+#endif
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+	set_two_phase_freq(1134000);
 #endif
 
 	msm8x60_init_tlmm();

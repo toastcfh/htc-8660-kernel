@@ -202,6 +202,9 @@ extern int panel_type;
 #ifdef CONFIG_PERFLOCK
 #include <mach/perflock.h>
 #endif
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+int set_two_phase_freq(int cpufreq);
+#endif
 
 /*
  * The UI_INTx_N lines are pmic gpio lines which connect i2c
@@ -5846,6 +5849,9 @@ static void __init ruby_init(void)
 		ruby_perflock_data.table_size = ARRAY_SIZE(ruby_perf_acpu_table_1512k);
 	}
         perflock_init(&ruby_perflock_data);
+#endif
+#ifdef CONFIG_CPU_FREQ_GOV_ONDEMAND_2_PHASE
+	set_two_phase_freq(1134000);
 #endif
 
 	msm8x60_init_tlmm();
