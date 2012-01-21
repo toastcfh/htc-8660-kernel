@@ -3331,6 +3331,11 @@ static struct platform_device scm_log_device = {
 	.id = -1,
 };
 
+static struct platform_device msm_rpm_device = {
+	.name = "msm_rpm",
+	.id = -1,
+};
+
 static struct platform_device *surf_devices[] __initdata = {
 	&ram_console_device,
 	&msm_device_smd,
@@ -3491,6 +3496,7 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_device_rng,
 #endif
 	&msm_tsens_device,
+	&msm_rpm_device,
 	&scm_log_device,
 };
 
