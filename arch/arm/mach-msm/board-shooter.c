@@ -5338,6 +5338,7 @@ static void __init msm8x60_init_mmc(void)
 	sdcc_vreg_data[0].vccq_data = &sdcc_vccq_reg_data[0];
 	sdcc_vreg_data[0].vccq_data->reg_name = "8901_lvs0";
 	sdcc_vreg_data[0].vccq_data->set_voltage_sup = 0;
+	sdcc_vreg_data[0].vccq_data->always_on = 1;
 	msm_add_sdcc(1, &msm8x60_sdc1_data);
 #endif
 #ifdef CONFIG_MMC_MSM_SDC2_SUPPORT
