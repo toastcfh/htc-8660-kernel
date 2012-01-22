@@ -4986,6 +4986,9 @@ static void __init shooter_map_io(void)
 	msm_shared_ram_phys = MSM_SHARED_RAM_PHYS;
 	msm_map_msm8x60_io();
 	msm8x60_allocate_memory_regions();
+	
+	if (socinfo_init() < 0)
+		pr_err("socinfo_init() failed!\n");
 }
 
 static void __init msm8x60_init_tlmm(void)
@@ -6034,9 +6037,6 @@ static void __init shooter_init(void)
 
 	pr_err("shooter_init, system_rev = %d\n", system_rev);
 
-	if (socinfo_init() < 0)
-		printk(KERN_ERR "%s: socinfo_init() failed!\n",
-		       __func__);
 	msm8x60_check_2d_hardware();
 
 	/* initialize SPM before acpuclock as the latter calls into SPM
