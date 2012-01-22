@@ -324,4 +324,8 @@ obj-$(CONFIG_ARCH_MSM7X30) += board-msm7x30-regulator.o
 obj-$(CONFIG_ARCH_MSM7X27A) += board-msm7x27a-regulator.o
 endif
 
+# HTC stuffs
+obj-$(CONFIG_HTC_BATT_CORE) += htc_battery_core.o
+obj-$(CONFIG_HTC_BATT8x60) += htc_battery_8x60.o
+
 obj-$(CONFIG_ARCH_MSM8960) += mdm2.o mdm_common.o

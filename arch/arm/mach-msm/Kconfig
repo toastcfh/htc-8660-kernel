@@ -738,6 +738,16 @@ config PMEM_GPU0
 	help
 	  Enable the PMEM GPU0 device on SMI Memory.
 
+config HTC_BATT_CORE
+	depends on POWER_SUPPLY
+	default n
+	bool "HTC battery core driver"
+
+config HTC_BATT8x60
+	depends on HTC_BATT_CORE
+	default n
+	bool "HTC battery driver for 8x60"
+
 config MSM_AMSS_VERSION
 	int
 	default 6210 if MSM_AMSS_VERSION_6210
