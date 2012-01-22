@@ -1375,10 +1375,10 @@ static int atmel_ts_probe(struct i2c_client *client,
 			ts->timestamp = jiffies + 60 * HZ;
 		}
 		ts->filter_level = pdata->filter_level;
-
+/* TODO prolly unneeded
 		if (usb_get_connect_type())
 			ts->status = CONNECTED;
-
+*/
 		ts->config_setting[NONE].config_T7
 			= ts->config_setting[CONNECTED].config_T7
 			= pdata->config_T7;
