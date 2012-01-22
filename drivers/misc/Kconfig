@@ -657,7 +657,24 @@ config CABLE_DETECT_GPIO_DOCK
         depends on CABLE_DETECT_8X60
         default n
         
-        
+config AMP_TPA2051D3
+        tristate "TI TPA2051D3 Speaker AMP Driver"
+        depends on I2C
+        help
+         TI TPA2051D3 Speaker AMP Driver implemented by HTC.
+
+config INPUT_ISL29028
+	tristate "ISL29028 proximity and light sensor"
+	help
+	  Say Y here to enable the ISL29028 Short Distance Proximity
+	  Sensor with Ambient Light Sensor.
+
+config INPUT_ISL29029
+	tristate "ISL29029 proximity and light sensor"
+	help
+	 Say Y here to enable the ISL29029 Short Distance Proximity
+	 Sensor with Ambient Light Sensor.
+     
 config TPS65200
         tristate "tps65200 Driver"
         depends on I2C
