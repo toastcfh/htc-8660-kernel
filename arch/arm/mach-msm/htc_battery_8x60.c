@@ -176,8 +176,8 @@ static int batt_alarm_config(unsigned long lower_threshold,
 	rc = pm8xxx_batt_alarm_disable(
 				PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
 	if (!rc)
-		rc = pm8xxx_batt_alarm_disable(
-+                               PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
+		rc = pm8xxx_batt_alarm_enable(
+				PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 	if (rc) {
 		BATT_ERR("state_set enabled failed, rc=%d", rc);
 		goto done;
