@@ -90,7 +90,7 @@ static irqreturn_t detect_irq_handler(int irq, void *dev_id)
 	do {
 		gpio1 = gpio_get_value(hi->pdata.hpin_gpio);
 		irq_type = gpio1 ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH;
-		set_irq_type(hi->hpin_irq, irq_type);
+		irq_set_irq_type(hi->hpin_irq, irq_type);
 		gpio2 = gpio_get_value(hi->pdata.hpin_gpio);
 	} while (gpio1 != gpio2 && retry_limit-- > 0);
 
@@ -118,7 +118,7 @@ static irqreturn_t button_irq_handler(int irq, void *dev_id)
 	HS_DBG();
 
 	hi->key_irq_type ^= irq_mask;
-	set_irq_type(hi->key_irq, hi->key_irq_type);
+	irq_set_irq_type(hi->key_irq, hi->key_irq_type);
 
 	wake_lock_timeout(&hi->hs_wake_lock, HS_WAKE_LOCK_TIMEOUT);
 	queue_delayed_work(button_wq, &button_gpio_work, HS_JIFFIES_ZERO);
@@ -159,7 +159,7 @@ static int hs_gpio_request_irq(unsigned int gpio, unsigned int *irq,
 		return ret;
 	}
 
-	ret = set_irq_wake(*irq, wake);
+	ret = irq_set_irq_wake(*irq, wake);
 	if (ret < 0) {
 		free_irq(*irq, 0);
 		gpio_free(gpio);

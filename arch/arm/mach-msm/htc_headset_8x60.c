@@ -17,7 +17,7 @@
  *
  */
 
-#include <linux/m_adc.h>
+#include <linux/msm_adc.h>
 #include <linux/pmic8058-xoadc.h>
 #include <linux/slab.h>
 
