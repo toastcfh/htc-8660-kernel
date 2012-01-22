@@ -11,6 +11,12 @@ menuconfig INPUT_TOUCHSCREEN
 
 if INPUT_TOUCHSCREEN
 
+config TOUCHSCREEN_ATMEL
+	tristate "Atmel i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Atmel over I2C based touchscreens.
+
 config TOUCHSCREEN_88PM860X
 	tristate "Marvell 88PM860x touchscreen"
 	depends on MFD_88PM860X
@@ -413,6 +419,13 @@ config TOUCHSCREEN_SYNAPTICS_I2C_RMI
 	depends on I2C
 	help
 	  This enables support for Synaptics RMI over I2C based touchscreens.
+
+config TOUCHSCREEN_COMPATIBLE_REPORT
+	bool "Touchscreen compatible report"
+	depends on I2C
+	default n
+	help
+	  This enables support for old report style in touchscreen driver
 
 config TOUCHSCREEN_SYNAPTICS_RMI4_I2C
 	tristate "Synaptics i2c touchscreen(ClearPad 3000)"
