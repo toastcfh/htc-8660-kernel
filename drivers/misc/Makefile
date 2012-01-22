@@ -65,3 +65,6 @@ obj-$(CONFIG_MSM_MEMORY_LOW_POWER_MODE_SUSPEND_DEEP_POWER_DOWN) \
 obj-$(CONFIG_PMIC8058_XOADC) += pmic8058-xoadc.o
 obj-$(CONFIG_TZCOM) += tzcom.o
 obj-$(CONFIG_QFP_FUSE) += qfp_fuse.o
+# HTC stuffs
+obj-$(CONFIG_CABLE_DETECT_8X60) += cable_detect.o
+obj-$(CONFIG_TPS65200)          += tps65200.o

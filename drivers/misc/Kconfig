@@ -635,6 +635,38 @@ config QFP_FUSE
 	  to the fuse block. Currently this is supported only
 	  on FSM targets.
 
+config CABLE_DETECT_8X60
+        boolean "Cable detect driver"
+        depends on ARCH_MSM8X60
+        default n
+        help
+          Detect usb, ac and other accessories.
+
+config CABLE_DETECT_ACCESSORY
+        boolean "CABLE ACCESSORY DETECT"
+        depends on CABLE_DETECT_8X60
+        default n
+
+config CABLE_DETECT_ACCESSORY_BY_ADC
+        boolean "DETECT ACCESSORY BY PMIC ADC"
+        depends on CABLE_DETECT_8X60 && CABLE_DETECT_ACCESSORY
+        default n
+
+config CABLE_DETECT_GPIO_DOCK
+        boolean "CABLE_DETECT_GPIO_DOCK"
+        depends on CABLE_DETECT_8X60
+        default n
+        
+        
+config TPS65200
+        tristate "tps65200 Driver"
+        depends on I2C
+        help
+         TPS65200 Switch charger implemented by HTC.
+         This could enable battery driver to set
+         Charging current 100mA~500mA or 500mA~1000mA
+         by GPIO or Register
+         
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
