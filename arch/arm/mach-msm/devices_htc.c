@@ -20,13 +20,12 @@
 #include <linux/dma-mapping.h>
 #include <mach/msm_iomap.h>
 #include <mach/dma.h>
-#include "gpio_chip.h"
+//#include "gpio_chip.h"
 #include "devices.h"
 #include <mach/board.h>
 #include <mach/board_htc.h>
 #include <mach/msm_hsusb.h>
-#include <linux/usb/mass_storage_function.h>
-#include <linux/usb/android.h>
+#include <linux/usb/android_composite.h>
 
 #include <asm/mach/flash.h>
 #include <asm/setup.h>
@@ -37,14 +36,21 @@
 #include <mach/msm_rpcrouter.h>
 #include <mach/msm_iomap.h>
 #include <asm/mach/mmc.h>
+#include <linux/msm_kgsl.h>
+#include <mach/dal_axi.h>
+#include "proc_comm.h"
 
 static char *df_serialno = "000000000000";
+static char *board_sn;
 
+#define MFG_GPIO_TABLE_MAX_SIZE        0x400
+static unsigned char mfg_gpio_table[MFG_GPIO_TABLE_MAX_SIZE];
 #if 0
+#ifndef CONFIG_ARCH_MSM7X30
 struct platform_device *devices[] __initdata = {
 	&msm_device_nand,
 	&msm_device_smd,
-	&msm_device_i2c,
+	/* &msm_device_i2c, */
 };
 
 void __init msm_add_devices(void)
@@ -53,159 +59,26 @@ void __init msm_add_devices(void)
 }
 #endif
 
-#define HSUSB_API_INIT_PHY_PROC	2
-#define HSUSB_API_PROG		0x30000064
-#define HSUSB_API_VERS		0x10001
-static void internal_phy_reset(void)
-{
-	struct msm_rpc_endpoint *usb_ep;
-	int rc;
-	struct hsusb_phy_start_req {
-		struct rpc_request_hdr hdr;
-	} req;
-
-	printk(KERN_INFO "msm_hsusb_phy_reset\n");
-
-	usb_ep = msm_rpc_connect(HSUSB_API_PROG, HSUSB_API_VERS, 0);
-	if (IS_ERR(usb_ep)) {
-		printk(KERN_ERR "%s: init rpc failed! error: %ld\n",
-				__func__, PTR_ERR(usb_ep));
-		goto close;
-	}
-	rc = msm_rpc_call(usb_ep, HSUSB_API_INIT_PHY_PROC,
-			&req, sizeof(req), 5 * HZ);
-	if (rc < 0)
-		printk(KERN_ERR "%s: rpc call failed! (%d)\n", __func__, rc);
-
-close:
-	msm_rpc_close(usb_ep);
-}
-
-/* adjust eye diagram, disable vbusvalid interrupts */
-static int hsusb_phy_init_seq[] = { 0x40, 0x31, 0x1D, 0x0D, 0x1D, 0x10, -1 };
-
-#ifdef CONFIG_USB_FUNCTION
-static char *usb_functions[] = {
-#if defined(CONFIG_USB_FUNCTION_MASS_STORAGE) || defined(CONFIG_USB_FUNCTION_UMS)
-	"usb_mass_storage",
-#endif
-#ifdef CONFIG_USB_FUNCTION_ADB
-	"adb",
-#endif
-};
-
-static struct msm_hsusb_product usb_products[] = {
-	{
-		.product_id	= 0x0c01,
-		.functions	= 0x00000041, /* usb_mass_storage */
-	},
-	{
-		.product_id	= 0x0c02,
-		.functions	= 0x00000043, /* usb_mass_storage + adb */
-	},
-};
-#endif
-
-struct msm_hsusb_platform_data msm_hsusb_pdata = {
-	.phy_reset = internal_phy_reset,
-	.phy_init_seq = hsusb_phy_init_seq,
-#ifdef CONFIG_USB_FUNCTION
-	.vendor_id = 0x0bb4,
-	.product_id = 0x0c02,
-	.version = 0x0100,
-	.product_name = "Android Phone",
-	.manufacturer_name = "HTC",
-
-	.functions = usb_functions,
-	.num_functions = ARRAY_SIZE(usb_functions),
-	.products = usb_products,
-	.num_products = ARRAY_SIZE(usb_products),
-#endif
-};
-
-#ifdef CONFIG_USB_FUNCTION
-static struct usb_mass_storage_platform_data mass_storage_pdata = {
-	.nluns = 1,
-	.buf_size = 16384,
-	.vendor = "HTC     ",
-	.product = "Android Phone   ",
-	.release = 0x0100,
-};
-
-static struct platform_device usb_mass_storage_device = {
-	.name = "usb_mass_storage",
-	.id = -1,
-	.dev = {
-		.platform_data = &mass_storage_pdata,
-		},
-};
-#endif
-
-#ifdef CONFIG_USB_ANDROID
-static struct android_usb_platform_data android_usb_pdata = {
-	.vendor_id	= 0x0bb4,
-	.product_id	= 0x0c01,
-	.adb_product_id	= 0x0c02,
-	.version	= 0x0100,
-	.product_name	= "Android Phone",
-	.manufacturer_name = "HTC",
-	.nluns = 1,
-};
-
-static struct platform_device android_usb_device = {
-	.name	= "android_usb",
-	.id		= -1,
-	.dev		= {
-		.platform_data = &android_usb_pdata,
-	},
-};
-#endif
-
-void __init msm_add_usb_devices(void (*phy_reset) (void))
-{
-	/* setup */
-	if (phy_reset)
-		msm_hsusb_pdata.phy_reset = phy_reset;
-	msm_device_hsusb.dev.platform_data = &msm_hsusb_pdata;
-	platform_device_register(&msm_device_hsusb);
-#ifdef CONFIG_USB_FUNCTION_MASS_STORAGE
-	platform_device_register(&usb_mass_storage_device);
-#endif
-#ifdef CONFIG_USB_ANDROID
-	platform_device_register(&android_usb_device);
-#endif
-}
-
 static struct android_pmem_platform_data pmem_pdata = {
 	.name = "pmem",
-	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
+	.no_allocator = PMEM_ALLOCATORTYPE_ALLORNOTHING,
 	.cached = 1,
 };
 
 static struct android_pmem_platform_data pmem_adsp_pdata = {
 	.name = "pmem_adsp",
-	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
+	.no_allocator = PMEM_ALLOCATORTYPE_BITMAP,
+#if defined(CONFIG_ARCH_MSM7227) || defined(CONFIG_ARCH_MSM7X30)
+	.cached = 1,
+#else
 	.cached = 0,
+#endif
 };
 
 static struct android_pmem_platform_data pmem_camera_pdata = {
 	.name = "pmem_camera",
-	.allocator_type = PMEM_ALLOCATORTYPE_BUDDYBESTFIT,
+	.no_allocator = PMEM_ALLOCATORTYPE_BITMAP,
 	.cached = 0,
-};
-
-static struct android_pmem_platform_data pmem_gpu0_pdata = {
-	.name = "pmem_gpu0",
-	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
-	.cached = 0,
-	.buffered = 1,
-};
-
-static struct android_pmem_platform_data pmem_gpu1_pdata = {
-	.name = "pmem_gpu1",
-	.allocator_type = PMEM_ALLOCATORTYPE_ALLORNOTHING,
-	.cached = 0,
-	.buffered = 1,
 };
 
 static struct platform_device pmem_device = {
@@ -218,18 +91,6 @@ static struct platform_device pmem_adsp_device = {
 	.name = "android_pmem",
 	.id = 1,
 	.dev = { .platform_data = &pmem_adsp_pdata },
-};
-
-static struct platform_device pmem_gpu0_device = {
-	.name = "android_pmem",
-	.id = 2,
-	.dev = { .platform_data = &pmem_gpu0_pdata },
-};
-
-static struct platform_device pmem_gpu1_device = {
-	.name = "android_pmem",
-	.id = 3,
-	.dev = { .platform_data = &pmem_gpu1_pdata },
 };
 
 static struct platform_device pmem_camera_device = {
@@ -251,6 +112,156 @@ static struct platform_device ram_console_device = {
 	.resource       = ram_console_resource,
 };
 
+#ifdef CONFIG_MSM_CAMERA_7X30
+static struct resource msm_vpe_resources[] = {
+       {
+               .start  = 0xAD200000,
+               .end    = 0xAD200000 + SZ_1M - 1,
+               .flags  = IORESOURCE_MEM,
+       },
+       {
+               .start  = INT_VPE,
+               .end    = INT_VPE,
+               .flags  = IORESOURCE_IRQ,
+       },
+};
+
+static struct platform_device msm_vpe_device = {
+       .name = "msm_vpe",
+       .id   = 0,
+       .num_resources = ARRAY_SIZE(msm_vpe_resources),
+       .resource = msm_vpe_resources,
+};
+#endif
+
+#if defined(CONFIG_MSM_HW3D)
+static struct resource resources_hw3d[] = {
+	{
+		.start	= 0xA0000000,
+		.end	= 0xA00fffff,
+		.flags	= IORESOURCE_MEM,
+		.name	= "regs",
+	},
+	{
+		.flags	= IORESOURCE_MEM,
+		.name	= "smi",
+	},
+	{
+		.flags	= IORESOURCE_MEM,
+		.name	= "ebi",
+	},
+	{
+		.start	= INT_GRAPHICS,
+		.end	= INT_GRAPHICS,
+		.flags	= IORESOURCE_IRQ,
+		.name	= "gfx",
+	},
+};
+
+static struct platform_device hw3d_device = {
+	.name		= "msm_hw3d",
+	.id		= 0,
+	.num_resources	= ARRAY_SIZE(resources_hw3d),
+	.resource	= resources_hw3d,
+};
+#endif
+
+#if defined(CONFIG_GPU_MSM_KGSL) && !defined(CONFIG_ARCH_MSM8X60)
+static struct resource msm_kgsl_resources[] = {
+	{
+		.name	= "kgsl_reg_memory",
+		.start	= MSM_GPU_REG_PHYS,
+		.end	= MSM_GPU_REG_PHYS + MSM_GPU_REG_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+		.name	= "kgsl_phys_memory",
+		.flags	= IORESOURCE_MEM,
+	},
+	{
+#ifdef CONFIG_ARCH_MSM7X30
+		.name   = "kgsl_yamato_irq",
+		.start  = INT_GRP_3D,
+		.end    = INT_GRP_3D,
+#else
+		.start	= INT_GRAPHICS,
+		.end	= INT_GRAPHICS,
+#endif
+		.flags	= IORESOURCE_IRQ,
+	},
+#ifdef CONFIG_ARCH_MSM7X30
+	{
+		.name   = "kgsl_2d0_reg_memory",
+		.start  = MSM_GPU_2D_REG_PHYS, /* Z180 base address */
+		.end    = MSM_GPU_2D_REG_PHYS + MSM_GPU_2D_REG_SIZE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	{
+		.name   = "kgsl_2d0_irq",
+		.start  = INT_GRP_2D,
+		.end    = INT_GRP_2D,
+		.flags  = IORESOURCE_IRQ,
+	},
+#endif
+};
+
+#ifdef CONFIG_ARCH_MSM7X30
+static struct kgsl_platform_data kgsl_pdata = {
+#ifdef CONFIG_MSM_NPA_SYSTEM_BUS
+	/* NPA Flow IDs */
+	.high_axi_3d = MSM_AXI_FLOW_3D_GPU_HIGH,
+	.high_axi_2d = MSM_AXI_FLOW_2D_GPU_HIGH,
+#else
+	/* AXI rates in KHz */
+	.high_axi_3d = 192000,
+	.high_axi_2d = 192000,
+#endif
+	.max_grp2d_freq = 0,
+	.min_grp2d_freq = 0,
+	.set_grp2d_async = NULL, /* HW workaround, run Z180 SYNC @ 192 MHZ */
+	.max_grp3d_freq = 245760000,
+	.min_grp3d_freq = 192000000,
+	.set_grp3d_async = set_grp3d_async,
+	.imem_clk_name = "imem_clk",
+	.grp3d_clk_name = "grp_clk",
+	.grp2d0_clk_name = "grp_2d_clk",
+};
+#endif
+
+static struct platform_device msm_kgsl_device = {
+	.name		= "kgsl",
+	.id		= -1,
+	.resource	= msm_kgsl_resources,
+	.num_resources	= ARRAY_SIZE(msm_kgsl_resources),
+#ifdef CONFIG_ARCH_MSM7X30
+	.dev = {
+		.platform_data = &kgsl_pdata,
+	},
+#endif
+};
+
+#if !defined(CONFIG_ARCH_MSM7X30)
+#define PWR_RAIL_GRP_CLK               8
+static int kgsl_power_rail_mode(int follow_clk)
+{
+       int mode = follow_clk ? 0 : 1;
+       int rail_id = PWR_RAIL_GRP_CLK;
+
+       return msm_proc_comm(PCOM_CLKCTL_RPC_RAIL_CONTROL, &rail_id, &mode);
+}
+
+static int kgsl_power(bool on)
+{
+       int cmd;
+       int rail_id = PWR_RAIL_GRP_CLK;
+
+       cmd = on ? PCOM_CLKCTL_RPC_RAIL_ENABLE : PCOM_CLKCTL_RPC_RAIL_DISABLE;
+       return msm_proc_comm(cmd, &rail_id, NULL);
+}
+#endif
+
+#endif
+
 void __init msm_add_mem_devices(struct msm_pmem_setting *setting)
 {
 	if (setting->pmem_size) {
@@ -265,17 +276,22 @@ void __init msm_add_mem_devices(struct msm_pmem_setting *setting)
 		platform_device_register(&pmem_adsp_device);
 	}
 
-	if (setting->pmem_gpu0_size) {
-		pmem_gpu0_pdata.start = setting->pmem_gpu0_start;
-		pmem_gpu0_pdata.size = setting->pmem_gpu0_size;
-		platform_device_register(&pmem_gpu0_device);
-	}
+#if defined(CONFIG_MSM_HW3D)
+	if (setting->pmem_gpu0_size && setting->pmem_gpu1_size) {
+		struct resource *res;
 
-	if (setting->pmem_gpu1_size) {
-		pmem_gpu1_pdata.start = setting->pmem_gpu1_start;
-		pmem_gpu1_pdata.size = setting->pmem_gpu1_size;
-		platform_device_register(&pmem_gpu1_device);
+		res = platform_get_resource_byname(&hw3d_device, IORESOURCE_MEM,
+						   "smi");
+		res->start = setting->pmem_gpu0_start;
+		res->end = res->start + setting->pmem_gpu0_size - 1;
+
+		res = platform_get_resource_byname(&hw3d_device, IORESOURCE_MEM,
+						   "ebi");
+		res->start = setting->pmem_gpu1_start;
+		res->end = res->start + setting->pmem_gpu1_size - 1;
+		platform_device_register(&hw3d_device);
 	}
+#endif
 
 	if (setting->pmem_camera_size) {
 		pmem_camera_pdata.start = setting->pmem_camera_start;
@@ -289,7 +305,29 @@ void __init msm_add_mem_devices(struct msm_pmem_setting *setting)
 			+ setting->ram_console_size - 1;
 		platform_device_register(&ram_console_device);
 	}
+
+#if defined(CONFIG_GPU_MSM_KGSL)&& !defined(CONFIG_ARCH_MSM8X60)
+	if (setting->kgsl_size) {
+		msm_kgsl_resources[1].start = setting->kgsl_start;
+		msm_kgsl_resources[1].end = setting->kgsl_start
+			+ setting->kgsl_size - 1;
+/* due to 7x30 gpu hw bug, we have to apply clk
+ * first then power on gpu, thus we move power on
+ * into kgsl driver
+ */
+#if !defined(CONFIG_ARCH_MSM7X30)
+		kgsl_power_rail_mode(0);
+		kgsl_power(true);
+#endif
+		platform_device_register(&msm_kgsl_device);
+	}
+#endif
+
+#ifdef CONFIG_MSM_CAMERA_7X30
+		platform_device_register(&msm_vpe_device);
+#endif
 }
+#endif
 
 #define PM_LIBPROG      0x30000061
 #if (CONFIG_MSM_AMSS_VERSION == 6220) || (CONFIG_MSM_AMSS_VERSION == 6225)
@@ -298,8 +336,9 @@ void __init msm_add_mem_devices(struct msm_pmem_setting *setting)
 #define PM_LIBVERS      0x10001
 #endif
 
-#if 0
+#if 1
 static struct platform_device *msm_serial_devices[] __initdata = {
+#ifndef CONFIG_ARCH_MSM8X60
 	&msm_device_uart1,
 	&msm_device_uart2,
 	&msm_device_uart3,
@@ -307,7 +346,50 @@ static struct platform_device *msm_serial_devices[] __initdata = {
 	&msm_device_uart_dm1,
 	&msm_device_uart_dm2,
 	#endif
+#endif
 };
+
+#ifdef CONFIG_ARCH_MSM8X60
+static struct msm_mem_settings mem_settings[] = {
+	/* First is default settings. */
+	{
+		.mem_size_mb = 768,
+		.mem_info = {
+			.nr_banks = 2,
+			.bank = {
+				[0] = {
+					.start = 0x40400000,
+				//	.node = PHYS_TO_NID(0x40400000),
+					.size = 0x42E00000 - 0x40400000,
+				},
+				[1] = {
+					.start = 0x48000000,
+				//	.node = PHYS_TO_NID(0x48000000),
+					.size = 0x70000000 - 0x48000000,
+				}
+			}
+		}
+	},
+	{
+		.mem_size_mb = 1024,
+		.mem_info = {
+			.nr_banks = 2,
+			.bank = {
+				[0] = {
+					.start = 0x40400000,
+				//	.node = PHYS_TO_NID(0x40400000),
+					.size = 0x42E00000 - 0x40400000,
+				},
+				[1] = {
+					.start = 0x48000000,
+				//	.node = PHYS_TO_NID(0x48000000),
+					.size = 0x80000000 - 0x48000000,
+				}
+			}
+		}
+	}
+};
+#endif
 
 int __init msm_add_serial_devices(unsigned num)
 {
@@ -366,6 +448,275 @@ int __init parse_tag_hwid(const struct tag *tags)
 }
 __tagtable(ATAG_HWID, parse_tag_hwid);
 
+static char *keycap_tag = NULL;
+static int __init board_keycaps_tag(char *get_keypads)
+{
+	if(strlen(get_keypads))
+		keycap_tag = get_keypads;
+	else
+		keycap_tag = NULL;
+	return 1;
+}
+__setup("androidboot.keycaps=", board_keycaps_tag);
+
+void board_get_keycaps_tag(char **ret_data)
+{
+	*ret_data = keycap_tag;
+}
+EXPORT_SYMBOL(board_get_keycaps_tag);
+
+static char *cid_tag = NULL;
+static int __init board_set_cid_tag(char *get_hboot_cid)
+{
+	if(strlen(get_hboot_cid))
+		cid_tag = get_hboot_cid;
+	else
+		cid_tag = NULL;
+	return 1;
+}
+__setup("androidboot.cid=", board_set_cid_tag);
+
+void board_get_cid_tag(char **ret_data)
+{
+	*ret_data = cid_tag;
+}
+EXPORT_SYMBOL(board_get_cid_tag);
+
+static char *carrier_tag = NULL;
+static int __init board_set_carrier_tag(char *get_hboot_carrier)
+{
+	if(strlen(get_hboot_carrier))
+		carrier_tag = get_hboot_carrier;
+	else
+		carrier_tag = NULL;
+	return 1;
+}
+__setup("androidboot.carrier=", board_set_carrier_tag);
+
+void board_get_carrier_tag(char **ret_data)
+{
+	*ret_data = carrier_tag;
+}
+EXPORT_SYMBOL(board_get_carrier_tag);
+
+/* G-Sensor calibration value */
+#define ATAG_GS         0x5441001d
+
+unsigned int gs_kvalue;
+EXPORT_SYMBOL(gs_kvalue);
+
+static int __init parse_tag_gs_calibration(const struct tag *tag)
+{
+	gs_kvalue = tag->u.revision.rev;
+	printk(KERN_DEBUG "%s: gs_kvalue = 0x%x\n", __func__, gs_kvalue);
+	return 0;
+}
+
+__tagtable(ATAG_GS, parse_tag_gs_calibration);
+
+/* Proximity sensor calibration values */
+#define ATAG_PS         0x5441001c
+
+unsigned int ps_kparam1;
+EXPORT_SYMBOL(ps_kparam1);
+
+unsigned int ps_kparam2;
+EXPORT_SYMBOL(ps_kparam2);
+
+static int __init parse_tag_ps_calibration(const struct tag *tag)
+{
+	ps_kparam1 = tag->u.serialnr.low;
+	ps_kparam2 = tag->u.serialnr.high;
+
+	printk(KERN_INFO "%s: ps_kparam1 = 0x%x, ps_kparam2 = 0x%x\n",
+		__func__, ps_kparam1, ps_kparam2);
+
+	return 0;
+}
+
+__tagtable(ATAG_PS, parse_tag_ps_calibration);
+
+unsigned int als_kadc;
+EXPORT_SYMBOL(als_kadc);
+
+static int __init parse_tag_als_calibration(const struct tag *tag)
+{
+	als_kadc = tag->u.als_kadc.kadc;
+
+	return 0;
+}
+
+__tagtable(ATAG_ALS, parse_tag_als_calibration);
+
+/* CSA sensor calibration values */
+#define ATAG_CSA	0x5441001f
+
+unsigned int csa_kvalue1;
+EXPORT_SYMBOL(csa_kvalue1);
+
+unsigned int csa_kvalue2;
+EXPORT_SYMBOL(csa_kvalue2);
+
+unsigned int csa_kvalue3;
+EXPORT_SYMBOL(csa_kvalue3);
+
+static int __init parse_tag_csa_calibration(const struct tag *tag)
+{
+	unsigned int *ptr = (unsigned int *)&tag->u;
+	csa_kvalue1 = ptr[0];
+	csa_kvalue2 = ptr[1];
+	csa_kvalue3 = ptr[2];
+
+	printk(KERN_DEBUG "csa_kvalue1 = 0x%x, csa_kvalue2 = 0x%x, "
+	"csa_kvalue3 = 0x%x\n", csa_kvalue1, csa_kvalue2, csa_kvalue3);
+
+	return 0;
+}
+__tagtable(ATAG_CSA, parse_tag_csa_calibration);
+
+/* Gyro/G-senosr calibration values */
+#define ATAG_GRYO_GSENSOR	0x54410020
+unsigned char gyro_gsensor_kvalue[37];
+EXPORT_SYMBOL(gyro_gsensor_kvalue);
+
+/* camera values */
+#define ATAG_CAM	0x54410021
+
+int __init parse_tag_cam(const struct tag *tags)
+{
+int mem_size = 0, find = 0;
+struct tag *t = (struct tag *)tags;
+
+for (; t->hdr.size; t = tag_next(t)) {
+	if (t->hdr.tag == ATAG_CAM) {
+		printk(KERN_DEBUG "find the memsize tag\n");
+		find = 1;
+		break;
+	}
+}
+
+if (find) {
+	mem_size = t->u.revision.rev;
+}
+printk(KERN_DEBUG "parse_tag_memsize: %d\n", mem_size);
+return mem_size;
+}
+__tagtable(ATAG_CAM, parse_tag_cam);
+
+
+static int __init parse_tag_gyro_gsensor_calibration(const struct tag *tag)
+{
+	int i;
+	unsigned char *ptr = (unsigned char *)&tag->u;
+	memcpy(&gyro_gsensor_kvalue[0], ptr, sizeof(gyro_gsensor_kvalue));
+
+	printk(KERN_DEBUG "gyro_gs data\n");
+	for (i = 0; i < sizeof(gyro_gsensor_kvalue); i++)
+		printk(KERN_DEBUG "[%d]:0x%x", i, gyro_gsensor_kvalue[i]);
+
+	return 0;
+}
+__tagtable(ATAG_GRYO_GSENSOR, parse_tag_gyro_gsensor_calibration);
+
+static int mfg_mode;
+int __init board_mfg_mode_init(char *s)
+{
+	if (!strcmp(s, "normal"))
+		mfg_mode = 0;
+	else if (!strcmp(s, "factory2"))
+		mfg_mode = 1;
+	else if (!strcmp(s, "recovery"))
+		mfg_mode = 2;
+	else if (!strcmp(s, "charge"))
+		mfg_mode = 3;
+	else if (!strcmp(s, "power_test"))
+		mfg_mode = 4;
+	else if (!strcmp(s, "offmode_charging"))
+		mfg_mode = 5;
+	else if (!strcmp(s, "mfgkernel:diag58"))
+		mfg_mode = 6;
+	else if (!strcmp(s, "gift_mode"))
+		mfg_mode = 7;
+
+	return 1;
+}
+
+int board_mfg_mode(void)
+{
+	return mfg_mode;
+}
+
+EXPORT_SYMBOL(board_mfg_mode);
+
+__setup("androidboot.mode=", board_mfg_mode_init);
+
+static int build_flag;
+
+static int __init board_bootloader_setup(char *str)
+{
+	char temp[strlen(str) + 1];
+	char *p = NULL;
+	char *build = NULL;
+	char *args = temp;
+
+	printk(KERN_INFO "%s: %s\n", __func__, str);
+
+	strcpy(temp, str);
+
+	/*parse the last parameter*/
+	while ((p = strsep(&args, ".")) != NULL) build = p;
+
+	/* Sometime hboot version would change from .X000 to .X001, .X002,...
+	 * So compare the first character to avoid unnecessary error.
+	 */
+	if (build) {
+		if (build[0] == '0') {
+			printk(KERN_INFO "%s: SHIP BUILD\n", __func__);
+			build_flag = SHIP_BUILD;
+		} else if (build[0] == '2') {
+			printk(KERN_INFO "%s: ENG BUILD\n", __func__);
+			build_flag = ENG_BUILD;
+		} else if (build[0] == '1') {
+			printk(KERN_INFO "%s: MFG BUILD\n", __func__);
+			build_flag = MFG_BUILD;
+		} else {
+			printk(KERN_INFO "%s: default ENG BUILD\n", __func__);
+			build_flag = ENG_BUILD;
+		}
+	}
+	return 1;
+}
+__setup("androidboot.bootloader=", board_bootloader_setup);
+
+int board_build_flag(void)
+{
+	return build_flag;
+}
+
+EXPORT_SYMBOL(board_build_flag);
+
+static int __init board_serialno_setup(char *serialno)
+{
+	char *str;
+
+	/* use default serial number when mode is factory2 */
+	if (board_mfg_mode() == 1 || !strlen(serialno))
+		str = df_serialno;
+	else
+		str = serialno;
+#ifdef CONFIG_USB_FUNCTION
+	msm_hsusb_pdata.serial_number = str;
+#endif
+	board_sn = str;
+	return 1;
+}
+__setup("androidboot.serialno=", board_serialno_setup);
+
+char *board_serialno(void)
+{
+	return board_sn;
+}
+
 #define ATAG_SKUID 0x4d534D73
 int __init parse_tag_skuid(const struct tag *tags)
 {
@@ -387,7 +738,37 @@ int __init parse_tag_skuid(const struct tag *tags)
 }
 __tagtable(ATAG_SKUID, parse_tag_skuid);
 
+#define ATAG_HERO_PANEL_TYPE 0x4d534D74
+int panel_type;
+int __init tag_panel_parsing(const struct tag *tags)
+{
+	panel_type = tags->u.revision.rev;
+
+	printk(KERN_DEBUG "%s: panel type = %d\n", __func__,
+		panel_type);
+
+	return panel_type;
+}
+__tagtable(ATAG_HERO_PANEL_TYPE, tag_panel_parsing);
+
+/* ISL29028 ID values */
+#define ATAG_PS_TYPE 0x4d534D77
+int ps_type;
+EXPORT_SYMBOL(ps_type);
+int __init tag_ps_parsing(const struct tag *tags)
+{
+	ps_type = tags->u.revision.rev;
+
+	printk(KERN_DEBUG "%s: PS type = 0x%x\n", __func__,
+		ps_type);
+
+	return ps_type;
+}
+__tagtable(ATAG_PS_TYPE, tag_ps_parsing);
+
 #define ATAG_ENGINEERID 0x4d534D75
+unsigned engineer_id;
+EXPORT_SYMBOL(engineer_id);
 int __init parse_tag_engineerid(const struct tag *tags)
 {
 	int engineerid = 0, find = 0;
@@ -401,50 +782,172 @@ int __init parse_tag_engineerid(const struct tag *tags)
 		}
 	}
 
-	if (find)
+	if (find) {
+		engineer_id = t->u.revision.rev;
 		engineerid = t->u.revision.rev;
-	printk(KERN_DEBUG "parse_tag_engineerid: hwid = 0x%x\n", engineerid);
+	}
+	printk(KERN_DEBUG "parse_tag_engineerid: 0x%x\n", engineerid);
 	return engineerid;
 }
 __tagtable(ATAG_ENGINEERID, parse_tag_engineerid);
 
-static int mfg_mode;
-int __init board_mfg_mode_init(char *s)
+#define ATAG_MFG_GPIO_TABLE 0x59504551
+int __init parse_tag_mfg_gpio_table(const struct tag *tags)
 {
-	if (!strcmp(s, "normal"))
-		mfg_mode = 0;
-	else if (!strcmp(s, "factory2"))
-		mfg_mode = 1;
-	else if (!strcmp(s, "recovery"))
-		mfg_mode = 2;
-	else if (!strcmp(s, "charge"))
-		mfg_mode = 3;
+       unsigned char *dptr = (unsigned char *)(&tags->u);
+       __u32 size;
 
-	return 1;
+       size = min((__u32)(tags->hdr.size - 2) * sizeof(__u32), (__u32)MFG_GPIO_TABLE_MAX_SIZE);
+       memcpy(mfg_gpio_table, dptr, size);
+       return 0;
 }
-__setup("androidboot.mode=", board_mfg_mode_init);
+__tagtable(ATAG_MFG_GPIO_TABLE, parse_tag_mfg_gpio_table);
 
-
-int board_mfg_mode(void)
+char * board_get_mfg_sleep_gpio_table(void)
 {
-	return mfg_mode;
+        return mfg_gpio_table;
 }
+EXPORT_SYMBOL(board_get_mfg_sleep_gpio_table);
 
-static int __init board_serialno_setup(char *serialno)
+static char *emmc_tag;
+static int __init board_set_emmc_tag(char *get_hboot_emmc)
 {
-	char *str;
-
-	if (board_mfg_mode() || !strlen(serialno))
-		str = df_serialno;
+	if (strlen(get_hboot_emmc))
+		emmc_tag = get_hboot_emmc;
 	else
-		str = serialno;
-#ifdef CONFIG_USB_FUNCTION
-	msm_hsusb_pdata.serial_number = str;
-#endif
-#ifdef CONFIG_USB_ANDROID
-	android_usb_pdata.serial_number = str;
-#endif
+		emmc_tag = NULL;
 	return 1;
 }
+__setup("androidboot.emmc=", board_set_emmc_tag);
 
-__setup("androidboot.serialno=", board_serialno_setup);
+int board_emmc_boot(void)
+{
+	if (emmc_tag) {
+		if (!strcmp(emmc_tag, "true"))
+			return 1;
+	}
+
+	return 0;
+}
+
+#define ATAG_MEMSIZE 0x5441001e
+unsigned memory_size;
+int __init parse_tag_memsize(const struct tag *tags)
+{
+	int mem_size = 0, find = 0;
+	struct tag *t = (struct tag *)tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == ATAG_MEMSIZE) {
+			printk(KERN_DEBUG "find the memsize tag\n");
+			find = 1;
+			break;
+		}
+	}
+
+	if (find) {
+		memory_size = t->u.revision.rev;
+		mem_size = t->u.revision.rev;
+	}
+	printk(KERN_DEBUG "parse_tag_memsize: %d\n", memory_size);
+	return mem_size;
+}
+__tagtable(ATAG_MEMSIZE, parse_tag_memsize);
+
+int __init parse_tag_extdiag(const struct tag *tags)
+{
+	const struct tag *t = tags;
+
+	for (; t->hdr.size; t = tag_next(t)) {
+		if (t->hdr.tag == 0x54410022)
+			return t->u.revision.rev;
+	}
+	return 0;
+}
+
+#if defined(CONFIG_ARCH_MSM8X60)
+static struct msm_mem_settings *board_find_mem_settings(unsigned mem_size_mb)
+{
+	int index;
+	for (index = 0; index < sizeof(mem_settings) / sizeof(mem_settings[0]); index++) {
+		if (mem_settings[index].mem_size_mb == mem_size_mb) {
+			pr_info("%s: %d MB settings is found.\n", __func__, mem_size_mb);
+			return &mem_settings[index];
+		}
+	}
+	pr_info("%s: use default mem bank settigs.\n", __func__);
+	return &mem_settings[0];
+}
+
+int msm_fixup(struct tag *tags, struct meminfo *mi)
+{
+	unsigned mem_size_mb = parse_tag_memsize((const struct tag *)tags);
+	struct msm_mem_settings *settings = board_find_mem_settings(mem_size_mb);
+	int index = 0;
+
+	pr_info("%s: mem size = %d\n", __func__, mem_size_mb);
+
+	mi->nr_banks = settings->mem_info.nr_banks;
+	for (index = 0; index < settings->mem_info.nr_banks; index++) {
+		mi->bank[index].start = settings->mem_info.bank[index].start;
+//		mi->bank[index].node = settings->mem_info.bank[index].node;
+		mi->bank[index].size = settings->mem_info.bank[index].size;
+	}
+	return 0;
+}
+#endif
+
+static unsigned int radio_flag = 0;
+int __init radio_flag_init(char *s)
+{
+	radio_flag = simple_strtoul(s, 0, 16);
+	return 1;
+}
+__setup("radioflag=", radio_flag_init);
+
+unsigned int get_radio_flag(void)
+{
+	return radio_flag;
+}
+
+static unsigned int kernel_flag = 0;
+int __init kernel_flag_init(char *s)
+{
+	kernel_flag = simple_strtoul(s, 0, 16);
+	return 1;
+}
+__setup("kernelflag=", kernel_flag_init);
+
+unsigned int get_kernel_flag(void)
+{
+	return kernel_flag;
+}
+
+BLOCKING_NOTIFIER_HEAD(psensor_notifier_list);
+
+int register_notifier_by_psensor(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&psensor_notifier_list, nb);
+}
+
+int unregister_notifier_by_psensor(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&psensor_notifier_list, nb);
+}
+
+static char *sku_color_tag = NULL;
+static int __init board_set_qwerty_color_tag(char *get_sku_color)
+{
+	if (strlen(get_sku_color))
+		sku_color_tag = get_sku_color;
+	else
+		sku_color_tag = NULL;
+	return 1;
+}
+__setup("androidboot.qwerty_color=", board_set_qwerty_color_tag);
+
+void board_get_sku_color_tag(char **ret_data)
+{
+	*ret_data = sku_color_tag;
+}
+EXPORT_SYMBOL(board_get_sku_color_tag);

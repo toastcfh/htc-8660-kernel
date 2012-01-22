@@ -454,6 +454,11 @@ int msm_add_sdcc(unsigned int controller,
 struct msm_usb_host_platform_data;
 int msm_add_host(unsigned int host,
 		struct msm_usb_host_platform_data *plat);
+
+#define SHIP_BUILD	0
+#define MFG_BUILD	1
+#define ENG_BUILD	2
+
 #if defined(CONFIG_USB_FUNCTION_MSM_HSUSB) \
 	|| defined(CONFIG_USB_MSM_72K) || defined(CONFIG_USB_MSM_72K_MODULE)
 void msm_hsusb_set_vbus_state(int online);

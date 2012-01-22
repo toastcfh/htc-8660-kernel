@@ -88,6 +88,9 @@ unsigned int __atags_pointer __initdata;
 unsigned int system_rev;
 EXPORT_SYMBOL(system_rev);
 
+char microp_ver[4];
+EXPORT_SYMBOL(microp_ver);
+
 unsigned int system_serial_low;
 EXPORT_SYMBOL(system_serial_low);
 
