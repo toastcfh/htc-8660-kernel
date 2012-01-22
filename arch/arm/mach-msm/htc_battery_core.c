@@ -42,10 +42,11 @@ static int htc_battery_get_property(struct power_supply *psy,
 static ssize_t htc_battery_charger_ctrl_timer(struct device *dev,
 				    struct device_attribute *attr,
 				    const char *buf, size_t count);
-
+				    
+// TODO this seems to be the the fix o_0?
 #define HTC_BATTERY_ATTR(_name)                                             \
 {                                                                           \
-	.attr = { .name = #_name, .mode = S_IRUGO, .owner = THIS_MODULE },  \
+	.attr = { .name = #_name, .mode = S_IRUGO /*, .owner = THIS_MODULE */ },  \
 	.show = htc_battery_show_property,                                  \
 	.store = NULL,                                                      \
 }

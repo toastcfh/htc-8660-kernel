@@ -31,9 +31,10 @@
 #include <linux/tps65200.h>
 #include <linux/reboot.h>
 #include <linux/miscdevice.h>
-#include <linux/m_adc.h>
+#include <linux/msm_adc.h>
 #include <linux/pmic8058-xoadc.h>
-#include <linux/pmic8058-batt-alarm.h>
+//#include <linux/pmic8058-batt-alarm.h>
+#include <linux/mfd/pm8xxx/batt-alarm.h>
 #include <mach/mpp.h>
 #include <linux/android_alarm.h>
 #include <linux/suspend.h>
@@ -151,20 +152,32 @@ static int batt_alarm_config(unsigned long lower_threshold,
 
 	BATT_LOG("%s(lw = %lu, up = %lu)", __func__,
 		lower_threshold, upper_threshold);
-	rc = pm8058_batt_alarm_state_set(0, 0);
+	rc = pm8xxx_batt_alarm_disable(
+			PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
+	if (!rc)
+		rc = pm8xxx_batt_alarm_disable(
+			PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 	if (rc) {
 		BATT_ERR("state_set disabled failed, rc=%d", rc);
 		goto done;
 	}
-
-	rc = pm8058_batt_alarm_threshold_set(lower_threshold, upper_threshold);
+//TODO
+	rc = pm8xxx_batt_alarm_threshold_set(
+			PM8XXX_BATT_ALARM_LOWER_COMPARATOR, lower_threshold);
+	if (!rc)
+		rc = pm8xxx_batt_alarm_threshold_set(
+				PM8XXX_BATT_ALARM_UPPER_COMPARATOR, upper_threshold);
 	if (rc) {
 		BATT_ERR("threshold_set failed, rc=%d!", rc);
 		goto done;
 	}
 
 #ifdef CONFIG_HTC_BATT_ALARM
-	rc = pm8058_batt_alarm_state_set(1, 0);
+	rc = pm8xxx_batt_alarm_disable(
+				PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
+	if (!rc)
+		rc = pm8xxx_batt_alarm_disable(
++                               PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 	if (rc) {
 		BATT_ERR("state_set enabled failed, rc=%d", rc);
 		goto done;
@@ -177,8 +190,13 @@ done:
 #ifdef CONFIG_HTC_BATT_ALARM
 static int batt_clear_voltage_alarm(void)
 {
-	int rc = pm8058_batt_alarm_state_set(0, 0);
+	int rc;
 	BATT_LOG("disable voltage alarm");
+	rc = pm8xxx_batt_alarm_disable(
+				PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
+	if (!rc)
+		rc = pm8xxx_batt_alarm_disable(
+				PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 	if (rc)
 		BATT_ERR("state_set disabled failed, rc=%d", rc);
 	return rc;
@@ -814,7 +832,11 @@ static int htc_battery_prepare(struct device *dev)
 				return -EBUSY;
 			}
 #else
-			rc = pm8058_batt_alarm_state_set(1, 1);
+			rc = pm8xxx_batt_alarm_enable(
+						PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
+			if (rc)
+				rc = pm8xxx_batt_alarm_enable(
+						PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 			if (rc) {
 				BATT_ERR("state_set enabled failed, rc=%d!", rc);
 				return -EBUSY;
@@ -824,11 +846,11 @@ static int htc_battery_prepare(struct device *dev)
 	}
 
 	BATT_LOG("%s: passing time:%lu, status:%u%u, "
-		"alarm will be triggered after %d.%d seconds",
+		"alarm will be triggered after FIX.MEH seconds",
 		__func__, htc_batt_timer.total_time_ms,
 		htc_batt_phone_call,
-		htc_batt_timer.alarm_timer_flag,
-		interval.tv.sec, interval.tv.nsec);
+		htc_batt_timer.alarm_timer_flag/*,
+		interval.tv.sec, interval.tv.nsec*/);
 	next_alarm = ktime_add(alarm_get_elapsed_realtime(), interval);
 	alarm_start_range(&htc_batt_timer.batt_check_wakeup_alarm,
 				next_alarm, ktime_add(next_alarm, slack));
@@ -869,7 +891,11 @@ static void htc_battery_complete(struct device *dev)
 #ifdef	CONFIG_HTC_BATT_ALARM
 	batt_set_voltage_alarm_mode(BATT_ALARM_DISABLE_MODE);
 #else
-	pm8058_batt_alarm_state_set(0, 0);
+//TODO	pm8058_batt_alarm_state_set(0, 0);
+	pm8xxx_batt_alarm_disable(
+		PM8XXX_BATT_ALARM_UPPER_COMPARATOR);
+	pm8xxx_batt_alarm_disable(
+		PM8XXX_BATT_ALARM_LOWER_COMPARATOR);
 
 #endif
 	return;
@@ -906,7 +932,7 @@ static int htc_battery_probe(struct platform_device *pdev)
 	if (rc)
 		BATT_ERR("request mbat_in irq failed!");
 	else
-		set_irq_wake(pdata->gpio_mbat_in, 1);
+		irq_set_irq_wake(pdata->gpio_mbat_in, 1);
 
 	htc_battery_core_ptr->func_show_batt_attr = htc_battery_show_batt_attr;
 	htc_battery_core_ptr->func_get_battery_info = htc_batt_get_battery_info;
@@ -969,7 +995,7 @@ static int htc_battery_probe(struct platform_device *pdev)
 	if (pdata->charger == SWITCH_CHARGER_TPS65200)
 		tps_register_notifier(&tps_int_notifier);
 
-	pm8058_batt_alarm_register_notifier(&battery_alarm_notifier);
+	pm8xxx_batt_alarm_register_notifier(&battery_alarm_notifier);
 
 	rc = pm8058_htc_config_mpp_and_adc_read(
 				htc_batt_info.adc_vref,
