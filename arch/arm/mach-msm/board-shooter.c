@@ -2092,7 +2092,7 @@ static struct msm_spi_platform_data msm_gsbi2_qup_spi_pdata = {
 
 #endif
 
-#if defined(CONFIG_I2C_SSBI) || defined(CONFIG_MSM8X60_SSBI)
+#if defined(CONFIG_I2C_SSBI) || defined(CONFIG_MSM_SSBI)
 /* PMIC SSBI */
 static struct msm_ssbi_platform_data msm_ssbi1_pdata = {
 	.controller_type = MSM_SBI_CTRL_PMIC_ARBITER,
@@ -2107,7 +2107,7 @@ static struct msm_ssbi_platform_data msm_ssbi2_pdata = {
 static struct msm_ssbi_platform_data msm_ssbi3_pdata = {
 	.controller_type = MSM_SBI_CTRL_SSBI,
 };
-#endif /* CONFIG_MSM8X60_SSBI */
+#endif /* CONFIG_MSM_SSBI */
 
 #ifdef CONFIG_BATTERY_MSM
 /* Use basic value for fake MSM battery */
@@ -3339,7 +3339,7 @@ static struct platform_device *surf_devices[] __initdata = {
 #ifdef CONFIG_SERIAL_MSM_HS
 	&msm_device_uart_dm1,
 #endif
-#ifdef CONFIG_MSM8X60_SSBI
+#ifdef CONFIG_MSM_SSBI
 	&msm_device_ssbi1,
 	&msm_device_ssbi2,
 	&msm_device_ssbi3,
@@ -3351,7 +3351,7 @@ static struct platform_device *surf_devices[] __initdata = {
 	&msm_device_ssbi2,
 	&msm_device_ssbi3,
 #endif
-#endif /* CONFIG_MSM8X60_SSBI */
+#endif /* CONFIG_MSM_SSBI */
 #ifdef CONFIG_MSM_DSPS
 	&msm_dsps_device,
 #endif
@@ -4059,7 +4059,7 @@ static struct mfd_cell pm8058_subdevs[] = {
 #endif
 };
 
-#ifdef CONFIG_MSM8X60_SSBI
+#ifdef CONFIG_MSM_SSBI
 static struct pm8058_platform_data pm8058_platform_data = {
 	.irq_base = PM8058_IRQ_BASE,
 	.irq = MSM_GPIO_TO_INT(PM8058_GPIO_INT),
@@ -4083,7 +4083,7 @@ static struct i2c_board_info pm8058_boardinfo[] __initdata = {
 		.platform_data = &pm8058_platform_data,
 	},
 };
-#endif /*CONFIG_MSM8X60_SSBI*/
+#endif /*CONFIG_MSM_SSBI*/
 #endif /* CONFIG_PMIC8058 */
 
 #if HASTIMPANI
@@ -4546,7 +4546,7 @@ static struct mfd_cell pm8901_subdevs[] = {
 	PM8901_VREG(PM8901_VREG_ID_HDMI_MVS),
 };
 
-#ifdef CONFIG_MSM8X60_SSBI
+#ifdef CONFIG_MSM_SSBI
 static struct pm8901_platform_data pm8901_platform_data = {
 	.irq_base = PM8901_IRQ_BASE,
 	.irq = MSM_GPIO_TO_INT(PM8901_GPIO_INT),
@@ -4569,7 +4569,7 @@ static struct i2c_board_info pm8901_boardinfo[] __initdata = {
 		.platform_data = &pm8901_platform_data,
 	},
 };
-#endif /*CONFIG_MSM8X60_SSBI*/
+#endif /*CONFIG_MSM_SSBI*/
 #endif /* CONFIG_PMIC8901 */
 /*
 static int config_shooter_proximity_gpios(int on)
@@ -4804,7 +4804,7 @@ struct i2c_registry {
 };
 
 static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
-#ifndef CONFIG_MSM8X60_SSBI
+#ifndef CONFIG_MSM_SSBI
 #ifdef CONFIG_PMIC8058
 	{
 		I2C_SURF | I2C_FFA,
@@ -4821,7 +4821,7 @@ static struct i2c_registry msm8x60_i2c_devices[] __initdata = {
 		ARRAY_SIZE(pm8901_boardinfo),
 	},
 #endif
-#endif /*CONFIG_MSM8X60_SSBI*/
+#endif /*CONFIG_MSM_SSBI*/
 	/*{
 		I2C_SURF | I2C_FFA,
 		MSM_GSBI10_QUP_I2C_BUS_ID,
@@ -4940,7 +4940,7 @@ static void __init msm8x60_init_buses(void)
 	msm_gsbi1_qup_spi_device.dev.platform_data = &msm_gsbi1_qup_spi_pdata;
 	msm_gsbi2_qup_spi_device.dev.platform_data = &msm_gsbi2_qup_spi_pdata;
 #endif
-#ifdef CONFIG_MSM8X60_SSBI
+#ifdef CONFIG_MSM_SSBI
 	msm_device_ssbi1.dev.platform_data = &msm_ssbi1_pdata;
 	msm_device_ssbi2.dev.platform_data = &msm_ssbi2_pdata;
 	msm_device_ssbi3.dev.platform_data = &msm_ssbi3_pdata;
@@ -4952,7 +4952,7 @@ static void __init msm8x60_init_buses(void)
 	msm_device_ssbi2.dev.platform_data = &msm_ssbi2_pdata;
 	msm_device_ssbi3.dev.platform_data = &msm_ssbi3_pdata;
 #endif
-#endif /* CONFIG_MSM8X60_SSBI */
+#endif /* CONFIG_MSM_SSBI */
 #if defined(CONFIG_USB_GADGET_MSM_72K) || defined(CONFIG_USB_EHCI_HCD)
 	msm_device_otg.dev.platform_data = &msm_otg_pdata;
 #endif
