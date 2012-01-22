@@ -151,7 +151,7 @@ static struct mmc_platform_data shooter_wifi_data = {
         .nonremovable   = 1,
 	.pclk_src_dfab	= 1,
 	.cfg_mpm_sdiowakeup = msm_sdcc_cfg_mpm_sdiowakeup,
-	.dummy52_required = 1,
+//	.dummy52_required = 1,
 };
 
 
@@ -369,7 +369,7 @@ static struct mmc_platform_data mmc_wimax_data = {
     .nonremovable   = 1,
 	.slot_type		= &mmc_wimax_type,  
 	.pclk_src_dfab	= 1,
-	.dummy52_required = 1,
+//	.dummy52_required = 1,
 };
 
 struct _vreg
