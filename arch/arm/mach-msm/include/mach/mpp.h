@@ -57,7 +57,8 @@ int mpp_config_digital_in(unsigned mpp, unsigned config);
 /* PM8058/PM8901 definitions */
 
 /* APIs */
-#ifdef CONFIG_PMIC8058
+#if 0 //TODO stubbed for now
+def CONFIG_PMIC8058
 int pm8058_mpp_config(unsigned mpp, unsigned type, unsigned level,
 		      unsigned control);
 #else
