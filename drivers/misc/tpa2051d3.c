@@ -49,7 +49,7 @@ static char HANDSET_AMP_ON[] =
 			{0x00, 0x82, 0x25, 0x57, 0x13, 0xCD, 0x0D};
 static char AMP_0FF[] = {0x00, 0x90};
 
-struct pm8058_gpio tpa2051pwr = {
+struct pm_gpio tpa2051pwr = {
 	.direction      = PM_GPIO_DIR_OUT,
 	.output_buffer  = PM_GPIO_OUT_BUF_CMOS,
 	.output_value   = 0,
@@ -217,8 +217,9 @@ int update_amp_parameter(int mode)
 	}
 	return 0;
 }
-static int
-tpa2051d3_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
+
+static long
+tpa2051d3_ioctl(struct file *file, unsigned int cmd,
 	   unsigned long arg)
 {
 	void __user *argp = (void __user *)arg;
@@ -251,7 +252,7 @@ tpa2051d3_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 		mutex_lock(&spk_amp_lock);
 		if (!last_spkamp_state) {
 			tpa2051pwr.output_value = 1;
-			rc = pm8058_gpio_config(pdata->gpio_tpa2051_spk_en,
+			rc = pm8xxx_gpio_config(pdata->gpio_tpa2051_spk_en,
 							&tpa2051pwr);
 
 			/* According to tpa2051d3 Spec */
@@ -270,7 +271,7 @@ tpa2051d3_ioctl(struct inode *inode, struct file *file, unsigned int cmd,
 err:
 		if (!last_spkamp_state) {
 			tpa2051pwr.output_value = 0;
-			pm8058_gpio_config(pdata->gpio_tpa2051_spk_en,
+			pm8xxx_gpio_config(pdata->gpio_tpa2051_spk_en,
 						&tpa2051pwr);
 		}
 		mutex_unlock(&spk_amp_lock);
@@ -333,7 +334,7 @@ static struct file_operations tpa2051d3_fops = {
 	.owner = THIS_MODULE,
 	.open = tpa2051d3_open,
 	.release = tpa2051d3_release,
-	.ioctl = tpa2051d3_ioctl,
+	.unlocked_ioctl = tpa2051d3_ioctl,
 };
 
 static struct miscdevice tpa2051d3_device = {

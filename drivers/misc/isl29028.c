@@ -36,6 +36,7 @@
 #include <linux/rtc.h>
 #include <linux/slab.h>
 #include <mach/board.h>
+#include <mach/board_htc.h>
 
 #define DPS(x...) printk(KERN_DEBUG "[PS][ISL29028] " x)
 #define DLS(x...) printk(KERN_DEBUG "[LS][ISL29028] " x)
@@ -550,7 +551,7 @@ static void __report_psensor_near(struct isl29028_info *lpi, uint16_t ps_adc)
 {
 	int ret;
 
-	set_irq_type(lpi->irq, IRQF_TRIGGER_HIGH);
+	irq_set_irq_type(lpi->irq, IRQF_TRIGGER_HIGH);
 
 	if (lpi->als_enable) {
 		ret = _isl29028_set_reg_bit(lpi->i2c_client, 0,
@@ -580,7 +581,7 @@ static void judge_and_enable_lightsensor(struct isl29028_info *lpi)
 
 static void __report_psensor_far(struct isl29028_info *lpi, uint16_t ps_adc)
 {
-	set_irq_type(lpi->irq, IRQF_TRIGGER_LOW);
+	irq_set_irq_type(lpi->irq, IRQF_TRIGGER_LOW);
 
 	report_psensor_input_event(lpi, ps_adc);
 
@@ -1053,7 +1054,7 @@ static int psensor_enable(struct isl29028_info *lpi)
 
 	lpi->ps_enable = 1;
 
-	ret = set_irq_wake(lpi->irq, 1);
+	ret = irq_set_irq_wake(lpi->irq, 1);
 	if (ret < 0) {
 		EPS("%s: failed to disable irq %d as a wake interrupt\n",
 			__func__, lpi->irq);
@@ -1093,7 +1094,7 @@ static int psensor_disable(struct isl29028_info *lpi)
 		return 0;
 	}
 
-	ret = set_irq_wake(lpi->irq, 0);
+	ret = irq_set_irq_wake(lpi->irq, 0);
 	if (ret < 0) {
 		EPS("%s: failed to disable irq %d as a wake interrupt\n",
 			__func__, lpi->irq);
@@ -1116,7 +1117,7 @@ static int psensor_disable(struct isl29028_info *lpi)
 
 	blocking_notifier_call_chain(&psensor_notifier_list, 0, NULL);
 
-	set_irq_type(lpi->irq, IRQF_TRIGGER_LOW);
+	irq_set_irq_type(lpi->irq, IRQF_TRIGGER_LOW);
 
 	if (lpi->power)
 		lpi->power(PS_PWR_ON, 0);

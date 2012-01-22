@@ -763,7 +763,7 @@ static int psensor_enable(struct isl29029_info *lpi)
 
 	lpi->ps_enable = 1;
 
-	ret = set_irq_wake(lpi->irq, 1);
+	ret = irq_set_irq_wake(lpi->irq, 1);
 	if (ret < 0) {
 		EPS("%s: failed to disable irq %d as a wake interrupt\n",
 			__func__, lpi->irq);
@@ -785,7 +785,7 @@ static int psensor_disable(struct isl29029_info *lpi)
 		return 0;
 	}
 
-	ret = set_irq_wake(lpi->irq, 0);
+	ret = irq_set_irq_wake(lpi->irq, 0);
 	if (ret < 0) {
 		EPS("%s: failed to disable irq %d as a wake interrupt\n",
 			__func__, lpi->irq);
