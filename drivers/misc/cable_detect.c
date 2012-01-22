@@ -20,13 +20,13 @@
 #include <linux/pmic8058-xoadc.h>
 #include <linux/platform_device.h>
 #include <linux/gpio.h>
-#include <linux/m_adc.h>
+#include <linux/msm_adc.h>
+#include <linux/wakelock.h>
 #include <mach/board.h>
 
 #include <mach/cable_detect.h>
-#include <mach/mpp.h>
+#include <linux/mfd/pm8xxx/mpp.h>
 #include <linux/switch.h>
-#include <linux/m_adc.h>
 
 #ifdef CONFIG_HTC_HEADSET_MGR
 #include <mach/htc_headset_mgr.h>
@@ -241,7 +241,7 @@ static void check_vbus_in(struct work_struct *w)
 
 				if (cancel_delayed_work_sync(&pInfo->dock_work)) {
 					if (pInfo->dock_pin_state == 0)
-						set_irq_type(pInfo->dockpin_irq,
+						irq_set_irq_type(pInfo->dockpin_irq,
 							IRQF_TRIGGER_LOW);
 				}
 				if (pInfo->accessory_type == DOCK_STATE_DESK) {
@@ -431,10 +431,10 @@ static void cable_detect_handler(struct work_struct *w)
 		return;
 #endif
 	if (pInfo->accessory_type == DOCK_STATE_UNDOCKED)
-		set_irq_type(pInfo->idpin_irq,
+		irq_set_irq_type(pInfo->idpin_irq,
 			value ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);
 	else
-		set_irq_type(pInfo->idpin_irq, IRQF_TRIGGER_HIGH);
+		irq_set_irq_type(pInfo->idpin_irq, IRQF_TRIGGER_HIGH);
 
 	enable_irq(pInfo->idpin_irq);
 
@@ -588,9 +588,9 @@ static void usb_id_detect_init(struct cable_detect_info *pInfo)
 		return;
 	}
 
-	ret = set_irq_wake(pInfo->idpin_irq, 1);
+	ret = irq_set_irq_wake(pInfo->idpin_irq, 1);
 	if (ret < 0) {
-		CABLE_ERR("%s: set_irq_wake failed\n", __func__);
+		CABLE_ERR("%s: irq_set_irq_wake failed\n", __func__);
 		goto err;
 	}
 
@@ -633,7 +633,7 @@ static void mhl_status_notifier_func(bool isMHL, int charging_type)
 #ifdef MHL_REDETECT
 		if (mhl_connected == 0) {
 			CABLE_INFO("MHL re-detect\n");
-			set_irq_type(pInfo->idpin_irq,
+			irq_set_irq_type(pInfo->idpin_irq,
 				id_pin ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);
 			pInfo->cable_redetect = 1;
 		}
@@ -646,7 +646,7 @@ static void mhl_status_notifier_func(bool isMHL, int charging_type)
 		return;
 	} else {
 		mhl_connected = 1;
-		set_irq_type(pInfo->idpin_irq,
+		irq_set_irq_type(pInfo->idpin_irq,
 			id_pin ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);
 
 		if (charging_type > CONNECT_TYPE_NONE)
@@ -878,7 +878,7 @@ static int cable_detect_probe(struct platform_device *pdev)
 				pdata->vbus_mpp_irq, vbus_irq_handler,
 				IRQF_TRIGGER_FALLING|IRQF_TRIGGER_RISING,
 				"vbus_irq", pInfo);
-		set_irq_wake(pdata->vbus_mpp_irq, 1);
+		irq_set_irq_wake(pdata->vbus_mpp_irq, 1);
 	}
 
 	if (switch_dev_register(&dock_switch) < 0) {
