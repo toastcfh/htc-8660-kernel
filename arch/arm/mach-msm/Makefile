@@ -326,6 +326,7 @@ endif
 
 # HTC stuffs
 obj-$(CONFIG_ARCH_MSM8X60) += devices_htc.o htc_wifi_nvs.o htc_awb_cal.o
+obj-$(CONFIG_ARCH_MSM_FLASHLIGHT) += msm_flashlight.o
 
 obj-$(CONFIG_HTC_BATT_CORE) += htc_battery_core.o
 obj-$(CONFIG_HTC_BATT8x60) += htc_battery_8x60.o
