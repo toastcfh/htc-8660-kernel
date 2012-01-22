@@ -167,4 +167,7 @@ uint16_t gpio_axis_4bit_gray_map(
 uint16_t gpio_axis_5bit_singletrack_map(
 			struct gpio_event_axis_info *info, uint16_t in);
 
+int gpio_event_get_phone_call_status(void);
+int gpio_event_get_fm_radio_status(void);
+int gpio_event_get_quickboot_status(void);
 #endif

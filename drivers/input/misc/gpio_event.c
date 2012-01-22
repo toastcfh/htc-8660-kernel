@@ -119,6 +119,52 @@ void gpio_event_resume(struct early_suspend *h)
 }
 #endif
 
+static unsigned char phone_call_status;
+int gpio_event_get_phone_call_status(void)
+{
+	return phone_call_status;
+}
+
+static int phone_call_status_store(const char *val, struct kernel_param *kp)
+{
+	int enabled = simple_strtol(val, NULL, 0);
+	phone_call_status = enabled;
+	printk(KERN_INFO "%s: phone_call_status %d\n", __func__, enabled);
+
+	return 0;
+}
+
+static int phone_call_status_show(char *buffer, struct kernel_param *kp)
+{
+	buffer[0] = '0' + phone_call_status;
+	return 1;
+}
+
+module_param_call(phone_call_status, phone_call_status_store, phone_call_status_show, NULL, 0664);
+
+static unsigned char enable_quickboot;
+int gpio_event_get_quickboot_status(void)
+{
+	return enable_quickboot;
+}
+
+static int enable_quickboot_store(const char *val, struct kernel_param *kp)
+{
+	int status = simple_strtol(val, NULL, 0);
+	enable_quickboot = status;
+	printk(KERN_INFO "%s: quick_boot_status %d\n", __func__, status);
+
+	return 0;
+}
+
+static int enable_quickboot_show(char *buffer, struct kernel_param *kp)
+{
+	buffer[0] = '0' + enable_quickboot;
+	return 1;
+}
+
+module_param_call(enable_quickboot, enable_quickboot_store, enable_quickboot_show, NULL, 0664);
+
 static int gpio_event_probe(struct platform_device *pdev)
 {
 	int err;
