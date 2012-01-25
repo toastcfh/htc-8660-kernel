@@ -211,11 +211,11 @@ obj-$(CONFIG_MACH_MSM8X60_FFA) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_FLUID) += board-msm8x60.o
 obj-$(CONFIG_MACH_MSM8X60_DRAGON) += board-msm8x60.o
 # HTC boards start
-obj-$(CONFIG_MACH_SHOOTER) += board-shooter.o board-shooter-audio.o
-obj-$(CONFIG_MACH_SHOOTER) += htc_bdaddress.o htc_sleep_clk.o board-shooter-rfkill.o
-obj-$(CONFIG_MACH_SHOOTER) += board-common-wimax.o board-shooter-mmc.o board-shooter-wifi.o
-obj-$(CONFIG_MACH_SHOOTER) += board-shooter-keypad.o
-obj-$(CONFIG_MACH_SHOOTER) += display/shooter-panel.o
+obj-$(CONFIG_MACH_SHOOTER) += board-shooter.o #board-shooter-audio.o
+#obj-$(CONFIG_MACH_SHOOTER) += htc_bdaddress.o htc_sleep_clk.o board-shooter-rfkill.o
+#obj-$(CONFIG_MACH_SHOOTER) += board-common-wimax.o board-shooter-mmc.o board-shooter-wifi.o
+#obj-$(CONFIG_MACH_SHOOTER) += board-shooter-keypad.o
+#obj-$(CONFIG_MACH_SHOOTER) += display/shooter-panel.o
 # HTC boards end
 obj-$(CONFIG_MACH_TYPE_MSM8X60_FUSION) += board-msm8x60.o mdm.o
 obj-$(CONFIG_MACH_MSM8X60_FUSN_FFA) += board-msm8x60.o mdm.o
