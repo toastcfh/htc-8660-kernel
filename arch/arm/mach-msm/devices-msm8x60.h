@@ -18,10 +18,13 @@
 #define MSM_GSBI9_QUP_I2C_BUS_ID 2
 #define MSM_GSBI8_QUP_I2C_BUS_ID 3
 #define MSM_GSBI7_QUP_I2C_BUS_ID 4
-#define MSM_GSBI12_QUP_I2C_BUS_ID 5
+#define MSM_GSBI10_QUP_I2C_BUS_ID 5
 #define MSM_SSBI1_I2C_BUS_ID     6
 #define MSM_SSBI2_I2C_BUS_ID     7
 #define MSM_SSBI3_I2C_BUS_ID     8
+#define MSM_GSBI5_QUP_I2C_BUS_ID 9
+#define MSM_GSBI12_QUP_I2C_BUS_ID 10
+
 
 #ifdef CONFIG_SND_SOC_MSM8660_APQ
 extern struct platform_device msm_pcm;
@@ -43,6 +46,7 @@ extern struct platform_device msm_pcm_hostless;
 
 #ifdef CONFIG_SPI_QUP
 extern struct platform_device msm_gsbi1_qup_spi_device;
+extern struct platform_device msm_gsbi2_qup_spi_device;
 extern struct platform_device msm_gsbi10_qup_spi_device;
 #endif
 
