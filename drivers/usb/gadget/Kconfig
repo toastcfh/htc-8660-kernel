@@ -986,3 +986,11 @@ config USB_G_WEBCAM
 endchoice
 
 endif # USB_GADGET
+
+config USB_HTC_SWITCH_STUB
+	depends on USB_OTG
+	depends on USB_MSM_72K
+	bool "USB HTC function switch stub"
+	default n
+	help
+	  HTC usb_function_switch stub
