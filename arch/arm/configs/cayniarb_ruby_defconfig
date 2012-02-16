@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35.14
-# Fri Jan 20 20:15:14 2012
+# Wed Feb 15 21:51:21 2012
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -2041,6 +2041,7 @@ CONFIG_USB_G_ANDROID=y
 # CONFIG_USB_G_HID is not set
 # CONFIG_USB_G_DBGP is not set
 # CONFIG_USB_G_WEBCAM is not set
+CONFIG_USB_HTC_SWITCH_STUB=y
 
 #
 # OTG and related infrastructure
