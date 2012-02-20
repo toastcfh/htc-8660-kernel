@@ -1,7 +1,7 @@
 #
 # Automatically generated make config: don't edit
 # Linux kernel version: 2.6.35.14
-# Wed Feb 15 21:50:47 2012
+# Mon Feb 20 00:55:53 2012
 #
 CONFIG_ARM=y
 CONFIG_SYS_SUPPORTS_APM_EMULATION=y
@@ -1116,6 +1116,7 @@ CONFIG_BCM4329_PURE_ANDROID=y
 CONFIG_BCM4329=m
 CONFIG_BCM4329_FW_PATH="/system/etc/firmware/fw_bcm4329.bin"
 CONFIG_BCM4329_NVRAM_PATH="/proc/calibration"
+# CONFIG_BCMDHD is not set
 
 #
 # WiMAX Wireless Broadband devices
