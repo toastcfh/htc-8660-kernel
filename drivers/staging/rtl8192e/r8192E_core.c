@@ -2614,7 +2614,9 @@ static void rtl8192_init_priv_variable(struct net_device* dev)
 				IMR_TXFOVW | IMR_BcnInt | IMR_TBDOK | IMR_TBDER);
 
 	priv->AcmControl = 0;
-	priv->pFirmware = vzalloc(sizeof(rt_firmware));
+	priv->pFirmware = (rt_firmware*)vmalloc(sizeof(rt_firmware));
+	if (priv->pFirmware)
+	memset(priv->pFirmware, 0, sizeof(rt_firmware));
 
 	/* rx related queue */
         skb_queue_head_init(&priv->rx_queue);
