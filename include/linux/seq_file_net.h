@@ -12,6 +12,13 @@ struct seq_net_private {
 #endif
 };
 
+#ifdef CONFIG_PROC_FS
+struct dev_iter_state {
+       struct seq_net_private p;
+       unsigned int pos; /* bucket << BUCKET_SPACE + offset */
+};
+#endif
+
 int seq_open_net(struct inode *, struct file *,
 		 const struct seq_operations *, int);
 int single_open_net(struct inode *, struct file *file,
