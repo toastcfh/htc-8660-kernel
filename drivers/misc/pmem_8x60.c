@@ -237,8 +237,32 @@ struct pmem_info {
 
 	long (*ioctl)(struct file *, unsigned int, unsigned long);
 	int (*release)(struct inode *, struct file *);
+	/* reference count of allocations */
+	atomic_t allocation_cnt;
+	/*
+	 * request function for a region when the allocation count goes
+	 * from 0 -> 1
+	 */
+	void (*mem_request)(void *);
+	/*
+	 * release function for a region when the allocation count goes
+	 * from 1 -> 0
+	 */
+	void (*mem_release)(void *);
+	/*
+	 * private data for the request/release callback
+	 */
+	void *region_data;
+	/*
+	 * map and unmap as needed
+	 */
+	int map_on_demand;
 };
 #define to_pmem_info_id(a) (container_of(a, struct pmem_info, kobj)->id)
+
+static void ioremap_pmem(int id);
+static void pmem_put_region(int id);
+static int pmem_get_region(int id);
 
 static struct pmem_info pmem[PMEM_MAX_DEVICES];
 static int id_count;
@@ -251,7 +275,7 @@ static struct {
 #ifdef CONFIG_KERNEL_PMEM_SMI_REGION
 	{ PMEM_KERNEL_SMI_DATA_NAME,
 		PMEM_MEMTYPE_SMI,
-		PMEM_MEMTYPE_EBI1,  /* Fall back to EBI1 automatically */
+		PMEM_INVALID_MEMTYPE, /* MUST be set invalid if no fallback */
 		-1 },
 #endif
 	{ PMEM_KERNEL_EBI1_DATA_NAME,
@@ -560,6 +584,68 @@ static struct kobj_type pmem_system_ktype = {
 	.default_attrs = pmem_system_attrs,
 };
 
+static int pmem_allocate_from_id(const int id, const unsigned long size,
+						const unsigned int align)
+{
+	int ret;
+	ret = pmem_get_region(id);
+
+	if (ret)
+		return -1;
+
+	ret = pmem[id].allocate(id, size, align);
+
+	if (ret < 0)
+		pmem_put_region(id);
+
+	return ret;
+}
+
+static int pmem_free_from_id(const int id, const int index)
+{
+	pmem_put_region(id);
+	return pmem[id].free(id, index);
+
+}
+
+static int pmem_get_region(int id)
+{
+	/* Must be called with arena mutex locked */
+	atomic_inc(&pmem[id].allocation_cnt);
+	if (!pmem[id].vbase) {
+		DLOG("PMEMDEBUG: mapping for %s", pmem[id].name);
+		if (pmem[id].mem_request)
+				pmem[id].mem_request(pmem[id].region_data);
+		ioremap_pmem(id);
+
+	}
+
+	if (pmem[id].vbase)
+		return 0;
+	else {
+		if (pmem[id].mem_release)
+			pmem[id].mem_release(pmem[id].region_data);
+		atomic_dec(&pmem[id].allocation_cnt);
+		return 1;
+	}
+}
+
+static void pmem_put_region(int id)
+{
+	/* Must be called with arena mutex locked */
+	if (atomic_dec_and_test(&pmem[id].allocation_cnt)) {
+		DLOG("PMEMDEBUG: unmapping for %s", pmem[id].name);
+		BUG_ON(!pmem[id].vbase);
+		if (pmem[id].map_on_demand) {
+			iounmap(pmem[id].vbase);
+			pmem[id].vbase = NULL;
+			if (pmem[id].mem_release)
+				pmem[id].mem_release(pmem[id].region_data);
+
+		}
+	}
+}
+
 static int get_id(struct file *file)
 {
 	return MINOR(file->f_dentry->d_inode->i_rdev);
@@ -568,6 +654,11 @@ static int get_id(struct file *file)
 static char *get_name(struct file *file)
 {
 	int id = get_id(file);
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	return pmem[id].name;
 }
 
@@ -735,7 +826,7 @@ static int pmem_free_bitmap(int id, int bitnum)
 	int i;
 	char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
 
-	DLOG("bitnum %d\n", bitnum);
+	pr_debug("[PME][%s] pmem_free_bitmap, bitnum %d\n", pmem[id].name, bitnum);
 
 	for (i = 0; i < pmem[id].allocator.bitmap.bitmap_allocs; i++) {
 		const int curr_bit =
@@ -784,11 +875,17 @@ static int pmem_free_system(int id, int index)
 static int pmem_free_space_bitmap(int id, struct pmem_freespace *fs)
 {
 	int i, j;
-	int max_allocs = pmem[id].allocator.bitmap.bitmap_allocs;
+	int max_allocs;
 	int alloc_start = 0;
 	int next_alloc;
 	unsigned long size = 0;
 
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
+	max_allocs = pmem[id].allocator.bitmap.bitmap_allocs;
 	fs->total = 0;
 	fs->largest = 0;
 
@@ -849,6 +946,11 @@ static int pmem_release(struct inode *inode, struct file *file)
 #if PMEM_DEBUG_MSGS
 	char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
 #endif
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	DLOG("releasing memory pid %u(%s) file %p(%ld) dev %s(id: %d)\n",
 		current->pid, get_task_comm(currtask_name, current),
 		file, file_count(file), get_name(file), id);
@@ -878,7 +980,7 @@ static int pmem_release(struct inode *inode, struct file *file)
 	/* if it is not a connected file and it has an allocation, free it */
 	if (!(PMEM_FLAGS_CONNECTED & data->flags) && has_allocation(file)) {
 		mutex_lock(&pmem[id].arena_mutex);
-		ret = pmem[id].free(id, data->index);
+		ret = pmem_free_from_id(id, data->index);
 		mutex_unlock(&pmem[id].arena_mutex);
 	}
 
@@ -915,7 +1017,11 @@ static int pmem_open(struct inode *inode, struct file *file)
 #if PMEM_DEBUG_MSGS
 	char currtask_name[FIELD_SIZEOF(struct task_struct, comm) + 1];
 #endif
-
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	if (pmem[id].memory_state == MEMORY_UNSTABLE_NO_MEMORY_ALLOCATED)
 		return -ENODEV;
 	DLOG("pid %u(%s) file %p(%ld) dev %s(id: %d)\n",
@@ -1183,27 +1289,27 @@ static int pmem_allocator_bitmap(const int id,
 	int bitnum, i;
 	unsigned int quanta_needed;
 
-	DLOG("bitmap id %d, len %ld, align %u\n", id, len, align);
+	pr_debug("[PME][%s] pmem_allocator_bitmap, len %ld\n", pmem[id].name, len);
 	if (!pmem[id].allocator.bitmap.bitm_alloc) {
-#if PMEM_DEBUG
-		printk(KERN_ALERT "pmem: bitm_alloc not present! id: %d\n",
-			id);
+#if 1
+		printk(KERN_ALERT "[PME][%s] bitm_alloc not present! \n",
+			pmem[id].name);
 #endif
-		return -1;
+		bitnum = -1; goto leave;
 	}
 
 	quanta_needed = (len + pmem[id].quantum - 1) / pmem[id].quantum;
-	DLOG("quantum size %u quanta needed %u free %u id %d\n",
-		pmem[id].quantum, quanta_needed,
-		pmem[id].allocator.bitmap.bitmap_free, id);
+	pr_debug("[PME][%s] quantum size %u quanta needed %u free %u\n",
+		pmem[id].name, pmem[id].quantum, quanta_needed,
+		pmem[id].allocator.bitmap.bitmap_free);
 
 	if (pmem[id].allocator.bitmap.bitmap_free < quanta_needed) {
-#if PMEM_DEBUG
-		printk(KERN_ALERT "pmem: memory allocation failure. "
-			"PMEM memory region exhausted, id %d."
-			" Unable to comply with allocation request.\n", id);
+#if 1
+		printk(KERN_ALERT "[PME][%s] memory allocation failure. "
+			"PMEM memory region exhausted."
+			" Unable to comply with allocation request.\n", pmem[id].name);
 #endif
-		return -1;
+		bitnum = -1; goto leave;
 	}
 
 	bitnum = reserve_quanta(quanta_needed, id, align);
@@ -1223,22 +1329,22 @@ static int pmem_allocator_bitmap(const int id,
 		int j;
 
 		if (!new_bitmap_allocs) { /* failed sanity check!! */
-#if PMEM_DEBUG
-			pr_alert("pmem: bitmap_allocs number"
+#if 1
+			pr_alert("[PME][%s] pmem: bitmap_allocs number"
 				" wrapped around to zero! Something "
-				"is VERY wrong.\n");
+				"is VERY wrong.\n", pmem[id].name);
 #endif
-			return -1;
+			bitnum = -1; goto leave;
 		}
 
 		if (new_bitmap_allocs > pmem[id].num_entries) {
 			/* failed sanity check!! */
-#if PMEM_DEBUG
-			pr_alert("pmem: required bitmap_allocs"
+#if 1
+			pr_alert("[PME][%s] pmem: required bitmap_allocs"
 				" number exceeds maximum entries possible"
-				" for current quanta\n");
+				" for current quanta\n", pmem[id].name);
 #endif
-			return -1;
+			bitnum = -1; goto leave;
 		}
 
 		temp = krealloc(pmem[id].allocator.bitmap.bitm_alloc,
@@ -1246,12 +1352,12 @@ static int pmem_allocator_bitmap(const int id,
 				sizeof(*pmem[id].allocator.bitmap.bitm_alloc),
 				GFP_KERNEL);
 		if (!temp) {
-#if PMEM_DEBUG
-			pr_alert("pmem: can't realloc bitmap_allocs,"
-				"id %d, current num bitmap allocs %d\n",
-				id, pmem[id].allocator.bitmap.bitmap_allocs);
+#if 1
+			pr_alert("[PME][%s] can't realloc bitmap_allocs,"
+				" current num bitmap allocs %d\n",
+				pmem[id].name, pmem[id].allocator.bitmap.bitmap_allocs);
 #endif
-			return -1;
+			bitnum = -1; goto leave;
 		}
 		pmem[id].allocator.bitmap.bitmap_allocs = new_bitmap_allocs;
 		pmem[id].allocator.bitmap.bitm_alloc = temp;
@@ -1261,16 +1367,33 @@ static int pmem_allocator_bitmap(const int id,
 			pmem[id].allocator.bitmap.bitm_alloc[i].quanta = 0;
 		}
 
-		DLOG("increased # of allocated regions to %d for id %d\n",
-			pmem[id].allocator.bitmap.bitmap_allocs, id);
+		pr_debug("[PME][%s] increased # of allocated regions to %d for \n",
+			pmem[id].name, pmem[id].allocator.bitmap.bitmap_allocs);
 	}
 
-	DLOG("bitnum %d, bitm_alloc index %d\n", bitnum, i);
+	pr_debug("[PME][%s] bitnum %d, bitm_alloc index %d\n", pmem[id].name, bitnum, i);
 
 	pmem[id].allocator.bitmap.bitmap_free -= quanta_needed;
 	pmem[id].allocator.bitmap.bitm_alloc[i].bit = bitnum;
 	pmem[id].allocator.bitmap.bitm_alloc[i].quanta = quanta_needed;
 leave:
+	if (-1 == bitnum)
+	{
+		pr_err("[PME][%s] error: pmem_allocator_bitmap failed\n", pmem[id].name);
+		for (i = 0; i < pmem[id].allocator.bitmap.bitmap_allocs; i++)
+		{
+			if (pmem[id].allocator.bitmap.bitm_alloc[i].bit != -1)
+			{
+				pr_debug("[PME][%s] bitm_alloc[%d].bit: %u bitm_alloc[%d].quanta: %u\n",
+					pmem[id].name,
+					i,
+					pmem[id].allocator.bitmap.bitm_alloc[i].bit,
+					i,
+					pmem[id].allocator.bitmap.bitm_alloc[i].quanta
+				);
+			}
+		}
+	}
 	return bitnum;
 }
 
@@ -1336,6 +1459,11 @@ static pgprot_t phys_mem_access_prot(struct file *file, pgprot_t vma_prot)
 {
 	int id = get_id(file);
 #ifdef pgprot_writecombine
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	if (pmem[id].cached == 0 || file->f_flags & O_SYNC)
 		/* on ARMv6 and ARMv7 this expands to Normal Noncached */
 		return pgprot_writecombine(vma_prot);
@@ -1556,7 +1684,7 @@ static struct vm_operations_struct vm_ops = {
 static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct pmem_data *data = file->private_data;
-	int index;
+	int index = -1;
 	unsigned long vma_size =  vma->vm_end - vma->vm_start;
 	int ret = 0, id = get_id(file);
 
@@ -1581,8 +1709,7 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 	down_write(&data->sem);
 	/* check this file isn't already mmaped, for submaps check this file
 	 * has never been mmaped */
-	if ((data->flags & PMEM_FLAGS_MASTERMAP) ||
-	    (data->flags & PMEM_FLAGS_SUBMAP) ||
+	if ((data->flags & PMEM_FLAGS_SUBMAP) ||
 	    (data->flags & PMEM_FLAGS_UNSUBMAP)) {
 #if PMEM_DEBUG
 		pr_err("pmem: you can only mmap a pmem file once, "
@@ -1593,8 +1720,13 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 	}
 	/* if file->private_data == unalloced, alloc*/
 	if (data->index == -1) {
+		//ABR
+		if(id >= PMEM_MAX_DEVICES) {
+			pr_err("%s: id(%d) is invalid\n", __func__, id);
+			BUG_ON(true);
+		}
 		mutex_lock(&pmem[id].arena_mutex);
-		index = pmem[id].allocate(id,
+		index = pmem_allocate_from_id(id,
 				vma->vm_end - vma->vm_start,
 				SZ_4K);
 		mutex_unlock(&pmem[id].arena_mutex);
@@ -1626,6 +1758,11 @@ static int pmem_mmap(struct file *file, struct vm_area_struct *vma)
 	if (data->flags & PMEM_FLAGS_CONNECTED) {
 		struct pmem_region_node *region_node;
 		struct list_head *elt;
+		//ABR
+		if(id >= PMEM_MAX_DEVICES) {
+			pr_err("%s: id(%d) is invalid\n", __func__, id);
+			BUG_ON(true);
+		}
 		if (pmem_map_garbage(id, vma, data, 0, vma_size)) {
 			pr_alert("pmem: mmap failed in kernel!\n");
 			ret = -EAGAIN;
@@ -1714,7 +1851,11 @@ int get_pmem_addr(struct file *file, unsigned long *start,
 		down_read(&data->sem);
 		if (has_allocation(file)) {
 			int id = get_id(file);
-
+			//ABR
+			if(id >= PMEM_MAX_DEVICES) {
+				pr_err("%s: id(%d) is invalid\n", __func__, id);
+				BUG_ON(true);
+			}
 			*start = pmem[id].start_addr(id, data);
 			*len = pmem[id].len(id, data);
 			*vstart = (unsigned long)
@@ -1839,6 +1980,11 @@ void flush_pmem_file(struct file *file, unsigned long offset, unsigned long len)
 		return;
 
 	id = get_id(file);
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	if (!pmem[id].cached)
 		return;
 
@@ -1923,7 +2069,11 @@ int pmem_cache_maint(struct file *file, unsigned int cmd,
 
 	data = file->private_data;
 	id = get_id(file);
-
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	if (!pmem[id].cached)
 		return 0;
 
@@ -2310,7 +2460,11 @@ int pmem_remap(struct pmem_region *region, struct file *file,
 		ret = -EINVAL;
 		goto err;
 	}
-
+	//ABR
+	if(id >= PMEM_MAX_DEVICES) {
+		pr_err("%s: id(%d) is invalid\n", __func__, id);
+		BUG_ON(true);
+	}
 	/* check that the requested range is within the src allocation */
 	if (unlikely((region->offset > pmem[id].len(id, data)) ||
 		     (region->len > pmem[id].len(id, data)) ||
@@ -2413,6 +2567,11 @@ static void pmem_get_size(struct pmem_region *region, struct file *file)
 		region->offset = 0;
 		region->len = 0;
 	} else {
+		//ABR
+		if(id >= PMEM_MAX_DEVICES) {
+			pr_err("%s: id(%d) is invalid\n", __func__, id);
+			BUG_ON(true);
+		}
 		region->offset = pmem[id].start_addr(id, data);
 		region->len = pmem[id].len(id, data);
 	}
@@ -2448,6 +2607,11 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				region.offset = 0;
 				region.len = 0;
 			} else {
+				//ABR
+				if(id >= PMEM_MAX_DEVICES) {
+					pr_err("%s: id(%d) is invalid\n", __func__, id);
+					BUG_ON(true);
+				}
 				region.offset = pmem[id].start_addr(id, data);
 				region.len = pmem[id].len(id, data);
 			}
@@ -2538,7 +2702,7 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 
 			mutex_lock(&pmem[id].arena_mutex);
-			data->index = pmem[id].allocate(id,
+			data->index = pmem_allocate_from_id(id,
 					arg,
 					SZ_4K);
 			mutex_unlock(&pmem[id].arena_mutex);
@@ -2585,9 +2749,9 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 			}
 
 			mutex_lock(&pmem[id].arena_mutex);
-			data->index = pmem[id].allocate(id,
-					alloc.size,
-					alloc.align);
+			data->index = pmem_allocate_from_id(id,
+				alloc.size,
+				alloc.align);
 			mutex_unlock(&pmem[id].arena_mutex);
 			ret = data->index == -1 ? -ENOMEM :
 				data->index;
@@ -2597,6 +2761,19 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case PMEM_CONNECT:
 		DLOG("connect\n");
 		return pmem_connect(arg, file);
+
+    // sync from pmem.c
+    case PMEM_CACHE_FLUSH:
+        {
+            struct pmem_region region;
+            DLOG("flush\n");
+            if (copy_from_user(&region, (void __user *)arg,
+                       sizeof(struct pmem_region)))
+                return -EFAULT;
+            flush_pmem_file(file, region.offset, region.len);
+            break;
+        }
+
 	case PMEM_CLEAN_INV_CACHES:
 	case PMEM_CLEAN_CACHES:
 	case PMEM_INV_CACHES:
@@ -2621,6 +2798,8 @@ static long pmem_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 
 static void ioremap_pmem(int id)
 {
+	DLOG("PMEMDEBUG: ioremaping for %s\n", pmem[id].name);
+
 	if (pmem[id].cached)
 		pmem[id].vbase = ioremap_cached(pmem[id].base, pmem[id].size);
 #ifdef ioremap_ext_buffered
@@ -3058,23 +3237,21 @@ int pmem_setup(struct android_pmem_platform_data *pdata,
 	if (pmem[id].memory_state == MEMORY_UNSTABLE_NO_MEMORY_ALLOCATED)
 		return 0;
 
-	if ((!is_kernel_memtype) &&
-		(pmem[id].allocator_type != PMEM_ALLOCATORTYPE_SYSTEM)) {
-		ioremap_pmem(id);
-		if (pmem[id].vbase == 0) {
-			pr_err("pmem: ioremap failed for device %s\n",
-				pmem[id].name);
-			goto error_cant_remap;
-		}
-	}
-
 	pmem[id].garbage_pfn = page_to_pfn(alloc_page(GFP_KERNEL));
+	atomic_set(&pmem[id].allocation_cnt, 0);
+	pmem[id].map_on_demand = pdata->map_on_demand;
+
+	if (pdata->setup_region)
+		pmem[id].region_data = pdata->setup_region();
+
+	if (pdata->request_region)
+		pmem[id].mem_request = pdata->request_region;
+
+	if (pdata->release_region)
+		pmem[id].mem_release = pdata->release_region;
 
 	return 0;
 
-error_cant_remap:
-	if (!is_kernel_memtype)
-		misc_deregister(&pmem[id].dev);
 err_cant_register_device:
 out_put_kobj:
 	kobject_put(&pmem[id].kobj);
