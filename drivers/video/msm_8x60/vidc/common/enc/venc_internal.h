@@ -30,7 +30,7 @@
 #ifndef VENC_INTERNAL_H
 #define VENC_INTERNAL_H
 
-#include <linux/msm_vidc_enc_8x60.h>
+#include <linux/msm_vidc_enc.h>
 #include <linux/cdev.h>
 
 #include "vidc_init.h"
